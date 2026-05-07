@@ -19,9 +19,9 @@
     --red: #ef4444;
     --orange: #f59e0b;
     --purple: #8b5cf6;
-    --text-dark: #1e293b;
-    --text-mid: #334155;
-    --text-light: #64748b;
+    --text-dark: #000000;
+    --text-mid: #000000;
+    --text-light: #222222;
     --bg-grad1: #e0e7ff;
     --bg-grad2: #f0f9ff;
     --bg-grad3: #fdf4ff;
@@ -36,7 +36,8 @@
     font-family: 'Cairo', 'Tajawal', sans-serif;
     background: linear-gradient(135deg, #dbeafe 0%, #ede9fe 40%, #e0f2fe 70%, #fce7f3 100%);
     min-height: 100vh;
-    color: var(--text-dark);
+    color: #000000;
+    font-size: 15px;
     overflow-x: hidden;
     position: relative;
   }
@@ -93,13 +94,13 @@
   .logo-text { font-size:15px; font-weight:700; color:var(--text-dark); line-height:1.3; }
   .logo-sub { font-size:11px; color:var(--text-light); font-weight:400; }
 
-  .nav-section { margin-bottom:8px; padding:0 8px; font-size:10px; font-weight:700; color:var(--text-light); letter-spacing:0.08em; text-transform:uppercase; }
+  .nav-section { margin-bottom:8px; padding:0 8px; font-size:11px; font-weight:700; color:#000; letter-spacing:0.08em; text-transform:uppercase; }
 
   .nav-item {
     display:flex; align-items:center; gap:10px;
     padding:11px 14px; border-radius:var(--radius-sm);
-    cursor:pointer; font-size:14px; font-weight:600;
-    color:var(--text-mid); transition: all 0.2s;
+    cursor:pointer; font-size:15px; font-weight:600;
+    color:#000; transition: all 0.2s;
     margin-bottom:3px; position:relative; overflow:hidden;
     border: 1px solid transparent;
   }
@@ -110,16 +111,16 @@
     box-shadow: 0 2px 8px rgba(99,102,241,0.08);
   }
   .nav-item .icon { font-size:18px; min-width:24px; text-align:center; }
-  .nav-badge { margin-right:auto; background:var(--accent3); color:#fff; font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; }
+  .nav-badge { margin-right:auto; background:var(--accent3); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:20px; }
 
   .sidebar-footer { margin-top:auto; padding-top:16px; border-top:1px solid rgba(99,102,241,0.1); }
   .year-badge {
     background:linear-gradient(135deg,#6366f1,#2563eb);
     color:#fff; border-radius:10px; padding:10px 14px;
-    font-size:13px; font-weight:700; text-align:center;
+    font-size:14px; font-weight:700; text-align:center;
     box-shadow:0 4px 12px rgba(99,102,241,0.25);
   }
-  .year-badge span { font-size:11px; font-weight:400; opacity:0.85; display:block; margin-bottom:2px; }
+  .year-badge span { font-size:12px; font-weight:400; opacity:0.85; display:block; margin-bottom:2px; }
 
   /* ===== MAIN ===== */
   .main { margin-right: var(--sidebar-w); flex:1; padding:28px; min-width:0; }
@@ -129,8 +130,8 @@
     display:flex; align-items:center; justify-content:space-between;
     margin-bottom:28px; flex-wrap:wrap; gap:12px;
   }
-  .page-title { font-size:24px; font-weight:800; color:var(--text-dark); }
-  .page-subtitle { font-size:13px; color:var(--text-light); font-weight:400; margin-top:2px; }
+  .page-title { font-size:16px; font-weight:800; color:#000; }
+  .page-subtitle { font-size:15px; color:#000; font-weight:400; margin-top:2px; }
 
   /* ===== GLASS CARD ===== */
   .glass-card {
@@ -172,14 +173,14 @@
   .stat-card.red .stat-value { color:var(--red); }
   .stat-card.purple .stat-value { color:var(--purple); }
   .stat-card.orange .stat-value { color:var(--orange); }
-  .stat-label { font-size:12px; color:var(--text-light); font-weight:500; }
+  .stat-label { font-size:15px; color:#000; font-weight:600; }
   .stat-icon { font-size:28px; position:absolute; top:16px; left:16px; opacity:0.18; }
 
   /* ===== BUTTONS ===== */
   .btn {
     display:inline-flex; align-items:center; gap:7px;
     padding:10px 20px; border-radius:10px; font-family:inherit;
-    font-size:13px; font-weight:700; cursor:pointer;
+    font-size:15px; font-weight:700; cursor:pointer;
     border:none; transition:all 0.2s; white-space:nowrap;
   }
   .btn-primary {
@@ -190,41 +191,41 @@
   .btn-green { background:linear-gradient(135deg,#10b981,#059669); color:#fff; box-shadow:0 4px 14px rgba(16,185,129,0.3); }
   .btn-green:hover { transform:translateY(-1px); }
   .btn-red { background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; box-shadow:0 4px 14px rgba(239,68,68,0.3); }
-  .btn-outline { background:rgba(255,255,255,0.4); border:1px solid rgba(99,102,241,0.25); color:var(--text-mid); }
+  .btn-outline { background:rgba(255,255,255,0.4); border:1px solid rgba(99,102,241,0.25); color:#000; }
   .btn-outline:hover { background:rgba(255,255,255,0.6); }
-  .btn-sm { padding:7px 14px; font-size:12px; border-radius:8px; }
+  .btn-sm { padding:7px 14px; font-size:14px; border-radius:8px; }
   .btn-icon { padding:8px; border-radius:8px; background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.6); cursor:pointer; font-size:15px; }
 
   /* ===== TABLE ===== */
   .table-wrap { overflow-x:auto; border-radius:var(--radius-sm); }
   table { width:100%; border-collapse:collapse; }
   thead th {
-    padding:12px 16px; font-size:12px; font-weight:700; color:var(--text-light);
+    padding:12px 16px; font-size:15px; font-weight:700; color:#000;
     background:rgba(99,102,241,0.07); text-align:right; white-space:nowrap;
     border-bottom:1px solid rgba(99,102,241,0.10);
   }
   tbody tr { transition:background 0.15s; border-bottom:1px solid rgba(99,102,241,0.06); }
   tbody tr:hover { background:rgba(99,102,241,0.04); }
-  tbody td { padding:14px 16px; font-size:13px; color:var(--text-mid); vertical-align:middle; }
+  tbody td { padding:14px 16px; font-size:15px; color:#000; vertical-align:middle; }
   tbody tr:last-child { border-bottom:none; }
 
   /* ===== BADGE ===== */
-  .badge { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:700; }
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:20px; font-size:13px; font-weight:700; }
   .badge-blue { background:rgba(37,99,235,0.1); color:var(--accent); }
   .badge-green { background:rgba(16,185,129,0.1); color:var(--green); }
   .badge-red { background:rgba(239,68,68,0.1); color:var(--red); }
   .badge-orange { background:rgba(245,158,11,0.1); color:var(--orange); }
   .badge-purple { background:rgba(139,92,246,0.1); color:var(--purple); }
-  .badge-gray { background:rgba(100,116,139,0.1); color:var(--text-light); }
+  .badge-gray { background:rgba(100,116,139,0.1); color:#000; }
 
   /* ===== INPUT ===== */
   .form-group { margin-bottom:16px; }
-  .form-label { font-size:12px; font-weight:700; color:var(--text-mid); margin-bottom:6px; display:block; }
+  .form-label { font-size:15px; font-weight:700; color:#000; margin-bottom:6px; display:block; }
   .form-input, .form-select {
     width:100%; padding:11px 14px; border-radius:10px;
     border:1px solid rgba(99,102,241,0.2);
     background:rgba(255,255,255,0.6); font-family:inherit;
-    font-size:13px; color:var(--text-dark); outline:none;
+    font-size:15px; color:#000; outline:none;
     transition:border 0.2s, box-shadow 0.2s; direction:rtl;
   }
   .form-input:focus, .form-select:focus {
@@ -253,15 +254,15 @@
   .modal-lg { max-width:700px; }
   .modal-sm { max-width:420px; }
   .modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
-  .modal-title { font-size:18px; font-weight:800; color:var(--text-dark); }
-  .modal-close { background:rgba(100,116,139,0.1); border:none; border-radius:8px; padding:7px 10px; cursor:pointer; font-size:16px; color:var(--text-light); transition:background 0.2s; }
+  .modal-title { font-size:16px; font-weight:800; color:#000; }
+  .modal-close { background:rgba(100,116,139,0.1); border:none; border-radius:8px; padding:7px 10px; cursor:pointer; font-size:16px; color:#000; transition:background 0.2s; }
   .modal-close:hover { background:rgba(239,68,68,0.1); color:var(--red); }
   .modal-footer { display:flex; gap:10px; justify-content:flex-start; margin-top:20px; }
 
   /* ===== ALERT MODAL ===== */
   .alert-icon { font-size:48px; text-align:center; margin-bottom:12px; }
-  .alert-title { font-size:18px; font-weight:800; color:var(--text-dark); text-align:center; margin-bottom:8px; }
-  .alert-msg { font-size:14px; color:var(--text-mid); text-align:center; margin-bottom:20px; line-height:1.6; }
+  .alert-title { font-size:16px; font-weight:800; color:#000; text-align:center; margin-bottom:8px; }
+  .alert-msg { font-size:15px; color:#000; text-align:center; margin-bottom:20px; line-height:1.6; }
   .alert-btns { display:flex; gap:10px; justify-content:center; }
 
   /* ===== PROGRESS BAR ===== */
@@ -287,8 +288,8 @@
     font-size:26px; font-weight:800; color:#fff;
     box-shadow:0 4px 16px rgba(99,102,241,0.3); flex-shrink:0;
   }
-  .profile-name { font-size:20px; font-weight:800; color:var(--text-dark); }
-  .profile-dep { font-size:13px; color:var(--text-light); margin-top:3px; }
+  .profile-name { font-size:16px; font-weight:800; color:#000; }
+  .profile-dep { font-size:15px; color:#000; margin-top:3px; }
 
   .leave-blocks { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:20px; }
   .leave-block {
@@ -296,22 +297,22 @@
     border:1px solid rgba(255,255,255,0.5); border-radius:var(--radius-sm); padding:18px;
     position:relative; overflow:hidden;
   }
-  .leave-block-title { font-size:12px; font-weight:700; color:var(--text-light); margin-bottom:8px; }
+  .leave-block-title { font-size:15px; font-weight:700; color:#000; margin-bottom:8px; }
   .leave-block-val { font-size:28px; font-weight:800; margin-bottom:4px; }
-  .leave-block-sub { font-size:11px; color:var(--text-light); margin-bottom:10px; }
+  .leave-block-sub { font-size:14px; color:#000; margin-bottom:10px; }
 
   /* ===== LEAVE HISTORY TABLE ===== */
-  .section-title { font-size:16px; font-weight:800; color:var(--text-dark); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .section-title { font-size:16px; font-weight:800; color:#000; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
   .section-title .dot { width:8px; height:8px; border-radius:50%; }
 
   /* ===== SEARCH BAR ===== */
   .search-wrap { position:relative; }
-  .search-icon { position:absolute; right:13px; top:50%; transform:translateY(-50%); font-size:15px; color:var(--text-light); pointer-events:none; }
+  .search-icon { position:absolute; right:13px; top:50%; transform:translateY(-50%); font-size:15px; color:#000; pointer-events:none; }
   .search-input { padding-right:38px !important; }
 
   /* ===== TABS ===== */
   .tabs { display:flex; gap:6px; margin-bottom:20px; background:rgba(255,255,255,0.30); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.5); border-radius:12px; padding:5px; width:fit-content; }
-  .tab { padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; color:var(--text-light); transition:all 0.2s; border:none; background:none; font-family:inherit; }
+  .tab { padding:8px 18px; border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; color:#000; transition:all 0.2s; border:none; background:none; font-family:inherit; }
   .tab.active { background:rgba(255,255,255,0.7); color:var(--accent3); box-shadow:0 2px 8px rgba(99,102,241,0.1); }
 
   /* ===== TOAST ===== */
@@ -320,8 +321,8 @@
     background:rgba(255,255,255,0.7); backdrop-filter:blur(18px);
     border:1px solid rgba(255,255,255,0.6);
     border-radius:12px; padding:14px 18px;
-    display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600;
-    color:var(--text-dark); box-shadow:0 8px 24px rgba(99,102,241,0.15);
+    display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600;
+    color:#000; box-shadow:0 8px 24px rgba(99,102,241,0.15);
     animation:slideInToast 0.3s; min-width:260px;
   }
   @keyframes slideInToast { from{transform:translateX(60px);opacity:0} to{transform:translateX(0);opacity:1} }
@@ -334,13 +335,13 @@
   /* ===== FILTERS ===== */
   .filters-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
   .filter-item { display:flex; flex-direction:column; gap:5px; }
-  .filter-item label { font-size:11px; font-weight:700; color:var(--text-light); }
-  .filter-item select, .filter-item input { padding:9px 12px; border-radius:9px; border:1px solid rgba(99,102,241,0.18); background:rgba(255,255,255,0.6); font-family:inherit; font-size:13px; color:var(--text-dark); outline:none; }
+  .filter-item label { font-size:14px; font-weight:700; color:#000; }
+  .filter-item select, .filter-item input { padding:9px 12px; border-radius:9px; border:1px solid rgba(99,102,241,0.18); background:rgba(255,255,255,0.6); font-family:inherit; font-size:15px; color:#000; outline:none; }
 
   /* ===== EMPTY STATE ===== */
-  .empty-state { text-align:center; padding:48px 24px; color:var(--text-light); }
+  .empty-state { text-align:center; padding:48px 24px; color:#000; }
   .empty-state .empty-icon { font-size:48px; margin-bottom:12px; opacity:0.5; }
-  .empty-state p { font-size:14px; font-weight:500; }
+  .empty-state p { font-size:15px; font-weight:500; }
 
   /* ===== RESPONSIVE ===== */
   @media(max-width:768px) {
@@ -357,7 +358,7 @@
 
   /* half-salary highlight */
   .half-salary-row { background:rgba(245,158,11,0.07) !important; }
-  .half-salary-row td { color:var(--orange) !important; font-weight:600; }
+  .half-salary-row td { color:#000 !important; font-weight:600; }
 </style>
 </head>
 <body>
@@ -388,6 +389,11 @@
     <div class="nav-section" style="margin-top:12px;">التقارير</div>
     <div class="nav-item" onclick="showPage('statistics')">
       <span class="icon">📊</span> الإحصائيات والتقارير
+    </div>
+
+    <div class="nav-section" style="margin-top:12px;">النظام</div>
+    <div class="nav-item" onclick="showPage('database')">
+      <span class="icon">🗄️</span> قاعدة البيانات
     </div>
 
     <div class="sidebar-footer">
@@ -593,6 +599,71 @@
       </div>
 
       <div id="stats-content"></div>
+    </div>
+
+    <!-- ===== DATABASE ===== -->
+    <div class="page" id="page-database">
+      <div class="page-header">
+        <div>
+          <div class="page-title">🗄️ قاعدة البيانات</div>
+          <div class="page-subtitle">تصدير واستيراد بيانات النظام كاملاً</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;margin-bottom:28px;">
+        <!-- Export Card -->
+        <div class="glass-card" style="border:1.5px solid rgba(16,185,129,0.25);background:rgba(16,185,129,0.04);">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+            <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 14px rgba(16,185,129,0.3);">⬇️</div>
+            <div>
+              <div style="font-size:17px;font-weight:800;color:var(--text-dark);">تنزيل النسخة الاحتياطية</div>
+              <div style="font-size:12px;color:var(--text-light);margin-top:2px;">تصدير جميع البيانات بصيغة JSON</div>
+            </div>
+          </div>
+          <div style="background:rgba(16,185,129,0.07);border-radius:12px;padding:14px;margin-bottom:18px;font-size:13px;color:var(--text-mid);line-height:1.7;">
+            <div>📋 <strong>ما يتضمنه الملف:</strong></div>
+            <div style="margin-top:6px;padding-right:16px;">
+              • بيانات جميع التدريسيين<br>
+              • سجل الإجازات الكامل<br>
+              • الأرصدة التراكمية<br>
+              • تاريخ التصدير ومعلومات النظام
+            </div>
+          </div>
+          <button class="btn btn-green" style="width:100%;justify-content:center;padding:13px;" onclick="exportDatabase()">
+            ⬇️ تنزيل قاعدة البيانات (JSON)
+          </button>
+        </div>
+
+        <!-- Import Card -->
+        <div class="glass-card" style="border:1.5px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.04);">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+            <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#6366f1,#2563eb);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 14px rgba(99,102,241,0.3);">⬆️</div>
+            <div>
+              <div style="font-size:17px;font-weight:800;color:var(--text-dark);">استيراد قاعدة البيانات</div>
+              <div style="font-size:12px;color:var(--text-light);margin-top:2px;">استعادة البيانات من ملف JSON</div>
+            </div>
+          </div>
+          <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:14px;margin-bottom:18px;font-size:13px;color:var(--text-mid);line-height:1.7;">
+            <div>⚠️ <strong>تحذير مهم:</strong></div>
+            <div style="margin-top:6px;padding-right:16px;">
+              سيتم <strong style="color:var(--red);">استبدال</strong> جميع البيانات الحالية بالبيانات المستوردة.<br>
+              تأكد من تنزيل نسخة احتياطية أولاً.
+            </div>
+          </div>
+          <label style="display:block;cursor:pointer;">
+            <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importDatabase(this)">
+            <div class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;cursor:pointer;">
+              ⬆️ اختيار ملف JSON للاستيراد
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- DB Info -->
+      <div class="glass-card">
+        <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>معلومات قاعدة البيانات الحالية</div>
+        <div id="db-info-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-top:4px;"></div>
+      </div>
     </div>
 
   </main>
@@ -812,8 +883,9 @@ function showPage(name) {
   if (name === 'leaves') renderLeavesLog();
   if (name === 'statistics') renderStats();
   if (name === 'dashboard') renderDashboard();
+  if (name === 'database') renderDbInfo();
 }
-const pageNames = { dashboard:'الرئيسية', faculty:'التدريسيون', profile:'', leaves:'سجل', statistics:'الإحصائيات' };
+const pageNames = { dashboard:'الرئيسية', faculty:'التدريسيون', profile:'', leaves:'سجل', statistics:'الإحصائيات', database:'قاعدة' };
 
 // ==================== DASHBOARD ====================
 function renderDashboard() {
@@ -906,30 +978,30 @@ function renderFacultyList() {
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
           <div class="avatar">${f.name.charAt(0)}</div>
           <div>
-            <div style="font-size:15px;font-weight:800;color:var(--text-dark)">${f.name}</div>
-            <div style="font-size:12px;color:var(--text-light);margin-top:2px;">${f.dept||'—'} ${f.rank?'• '+f.rank:''}</div>
+            <div style="font-size:16px;font-weight:800;color:#000">${f.name}</div>
+            <div style="font-size:15px;color:#000;margin-top:2px;">${f.dept||'—'} ${f.rank?'• '+f.rank:''}</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;text-align:center;">
           <div style="background:rgba(37,99,235,0.07);border-radius:10px;padding:10px;">
             <div style="font-size:18px;font-weight:800;color:var(--accent);">${bal.normal}</div>
-            <div style="font-size:10px;color:var(--text-light);font-weight:600;">اعتيادية متبقية</div>
+            <div style="font-size:13px;color:#000;font-weight:600;">اعتيادية متبقية</div>
           </div>
           <div style="background:rgba(239,68,68,0.07);border-radius:10px;padding:10px;">
             <div style="font-size:18px;font-weight:800;color:var(--red);">${bal.sick}</div>
-            <div style="font-size:10px;color:var(--text-light);font-weight:600;">مرضية متبقية</div>
+            <div style="font-size:13px;color:#000;font-weight:600;">مرضية متبقية</div>
           </div>
           <div style="background:rgba(139,92,246,0.07);border-radius:10px;padding:10px;">
             <div style="font-size:18px;font-weight:800;color:var(--purple);">${cum}</div>
-            <div style="font-size:10px;color:var(--text-light);font-weight:600;">تراكمي</div>
+            <div style="font-size:13px;color:#000;font-weight:600;">تراكمي</div>
           </div>
         </div>
         <div style="margin-bottom:6px;">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-light);margin-bottom:4px;"><span>اعتيادية مستخدمة</span><span>${bal.normalUsed}/${NORMAL_DAYS}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:14px;color:#000;margin-bottom:4px;"><span>اعتيادية مستخدمة</span><span>${bal.normalUsed}/${NORMAL_DAYS}</span></div>
           <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
         </div>
         <div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-light);margin-bottom:4px;"><span>مرضية مستخدمة</span><span>${bal.sickUsed}/${SICK_DAYS}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:14px;color:#000;margin-bottom:4px;"><span>مرضية مستخدمة</span><span>${bal.sickUsed}/${SICK_DAYS}</span></div>
           <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
         </div>
       </div>`;
@@ -977,19 +1049,19 @@ function renderProfile(id) {
     <div class="leave-blocks">
       <div class="leave-block">
         <div class="leave-block-title">🗂️ الإجازة التراكمية</div>
-        <div class="leave-block-val" style="color:var(--purple);">${cum} <span style="font-size:14px;font-weight:500;">يوم</span></div>
+        <div class="leave-block-val" style="color:var(--purple);">${cum} <span style="font-size:15px;font-weight:500;">يوم</span></div>
         <div class="leave-block-sub">الرصيد المتراكم من السنوات السابقة</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-purple" style="width:${Math.min(100,cum/100*100)}%"></div></div>
       </div>
       <div class="leave-block">
         <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
-        <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:14px;font-weight:500;">يوم متبقي</span></div>
+        <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
         <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${NORMAL_DAYS} يوم</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
       </div>
       <div class="leave-block">
         <div class="leave-block-title">🏥 الإجازة المرضية</div>
-        <div class="leave-block-val" style="color:var(--red);">${bal.sick} <span style="font-size:14px;font-weight:500;">يوم متبقي</span></div>
+        <div class="leave-block-val" style="color:var(--red);">${bal.sick} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
         <div class="leave-block-sub">مستخدم: ${bal.sickUsed} من ${SICK_DAYS} يوم</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
       </div>
@@ -1378,87 +1450,365 @@ function renderStats() {
   `;
 }
 
-// ==================== EXPORT ====================
+// ==================== EXPORT EXCEL (styled) ====================
 function exportExcel() {
-  const rows = [['#','التدريسي','القسم','نوع الإجازة','من','إلى','الأيام','السنة','ملاحظات']];
   const fFilter = document.getElementById('log-faculty-filter')?.value||'';
   const tFilter = document.getElementById('log-type-filter')?.value||'';
   const yFilter = document.getElementById('log-year-filter')?.value||'';
+  const fromF = document.getElementById('log-from-filter')?.value||'';
+  const toF = document.getElementById('log-to-filter')?.value||'';
+  const typeMap = {normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية - نصف راتب'};
 
-  leaves.filter(l=>{
+  const filtered = leaves.filter(l=>{
     if (l.type==='cum-add') return false;
     if (fFilter && l.facultyId!==fFilter) return false;
     if (tFilter && l.type!==tFilter) return false;
     if (yFilter && l.year!==yFilter) return false;
+    if (fromF && l.fromDate < fromF) return false;
+    if (toF && l.fromDate > toF) return false;
     return true;
-  }).forEach((l,i)=>{
+  }).sort((a,b)=>b.id.localeCompare(a.id));
+
+  // Build styled HTML table for Excel
+  const rows = filtered.map((l,i)=>{
     const f = faculty.find(x=>x.id===l.facultyId);
-    const typeMap={normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية بنصف راتب'};
-    rows.push([i+1, f?.name||'', f?.dept||'', typeMap[l.type]||l.type, l.fromDate, l.toDate, l.days, l.year, l.notes||'']);
-  });
-  downloadCSV(rows, 'سجل_الإجازات.csv');
+    const typeName = typeMap[l.type]||l.type;
+    const rowColor = l.type==='half'?'#fff8ed': l.type==='sick'?'#fff5f5': l.type==='cumulative'?'#f5f3ff':'#f0fff9';
+    const typeColor = l.type==='half'?'#d97706': l.type==='sick'?'#dc2626': l.type==='cumulative'?'#7c3aed':'#059669';
+    return `<tr style="background:${rowColor}">
+      <td style="padding:9px 14px;text-align:center;font-weight:700;color:#64748b;border:1px solid #e2e8f0">${i+1}</td>
+      <td style="padding:9px 14px;font-weight:700;color:#1e293b;border:1px solid #e2e8f0">${f?.name||'—'}</td>
+      <td style="padding:9px 14px;color:#334155;border:1px solid #e2e8f0">${f?.dept||'—'}</td>
+      <td style="padding:9px 14px;color:#334155;border:1px solid #e2e8f0">${f?.rank||'—'}</td>
+      <td style="padding:9px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:${typeColor}20;color:${typeColor};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700">${typeName}</span></td>
+      <td style="padding:9px 14px;text-align:center;color:#334155;border:1px solid #e2e8f0">${l.fromDate}</td>
+      <td style="padding:9px 14px;text-align:center;color:#334155;border:1px solid #e2e8f0">${l.toDate}</td>
+      <td style="padding:9px 14px;text-align:center;font-weight:800;color:#2563eb;border:1px solid #e2e8f0">${l.days}</td>
+      <td style="padding:9px 14px;text-align:center;color:#334155;border:1px solid #e2e8f0">${l.year}</td>
+      <td style="padding:9px 14px;color:#64748b;border:1px solid #e2e8f0">${l.notes||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const totalDays = filtered.reduce((s,l)=>s+l.days,0);
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="UTF-8">
+  <style>
+    body{font-family:Arial,sans-serif;direction:rtl;}
+    .title{font-size:18px;font-weight:bold;color:#1e293b;margin-bottom:4px;}
+    .subtitle{font-size:13px;color:#64748b;margin-bottom:20px;}
+    table{border-collapse:collapse;width:100%;}
+  </style></head><body>
+  <div class="title">📋 سجل إجازات التدريسيين</div>
+  <div class="subtitle">تاريخ التصدير: ${new Date().toLocaleDateString('ar-IQ')} | إجمالي السجلات: ${filtered.length} | إجمالي الأيام: ${totalDays}</div>
+  <table>
+    <thead>
+      <tr style="background:linear-gradient(135deg,#6366f1,#2563eb)">
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;white-space:nowrap">#</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;white-space:nowrap">اسم التدريسي</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;white-space:nowrap">القسم</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;white-space:nowrap">الدرجة العلمية</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;white-space:nowrap">نوع الإجازة</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;white-space:nowrap">من تاريخ</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;white-space:nowrap">إلى تاريخ</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;white-space:nowrap">الأيام</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;white-space:nowrap">السنة الدراسية</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;white-space:nowrap">ملاحظات</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr style="background:#f1f5f9">
+        <td colspan="7" style="padding:10px 14px;font-weight:bold;color:#1e293b;border:1px solid #e2e8f0">الإجمالي</td>
+        <td style="padding:10px 14px;text-align:center;font-weight:800;color:#2563eb;font-size:16px;border:1px solid #e2e8f0">${totalDays}</td>
+        <td colspan="2" style="border:1px solid #e2e8f0"></td>
+      </tr>
+    </tfoot>
+  </table>
+  </body></html>`;
+
+  const blob = new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='سجل_الإجازات.xls'; a.click();
+  showToast('📊 تم تصدير ملف Excel بنجاح', 'green');
 }
 
 function exportStatsExcel() {
   const cy = currentYear();
   const yFilter = document.getElementById('stats-year-filter')?.value || cy;
-  const rows = [['#','الاسم','القسم','الدرجة','اعتيادية مستخدمة','اعتيادية متبقية','مرضية مستخدمة','مرضية متبقية','تراكمي','نصف راتب']];
-  faculty.forEach((f,i)=>{
-    const bal = getBalance(f.id, yFilter);
-    const cum = getCumBalance(f.id);
-    const halfDays = leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0);
-    rows.push([i+1,f.name,f.dept||'',f.rank||'',bal.normalUsed,bal.normal,bal.sickUsed,bal.sick,cum,halfDays]);
-  });
-  downloadCSV(rows, `إحصائيات_${yFilter}.csv`);
-}
 
-function downloadCSV(rows, filename) {
-  const bom = '\uFEFF';
-  const csv = bom + rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
-  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  showToast('📊 تم تصدير ملف Excel بنجاح', 'green');
-}
-
-function exportPDF() { exportStatsPDF(); }
-
-function exportStatsPDF() {
-  const cy = currentYear();
-  const yFilter = document.getElementById('stats-year-filter')?.value || cy;
   const rows = faculty.map((f,i)=>{
     const bal = getBalance(f.id, yFilter);
     const cum = getCumBalance(f.id);
     const halfDays = leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0);
-    return `<tr style="border-bottom:1px solid #e2e8f0;">
-      <td style="padding:8px 12px">${i+1}</td>
-      <td style="padding:8px 12px;font-weight:700">${f.name}</td>
-      <td style="padding:8px 12px">${f.dept||'—'}</td>
-      <td style="padding:8px 12px;color:#2563eb">${bal.normalUsed}/${NORMAL_DAYS}</td>
-      <td style="padding:8px 12px;color:#ef4444">${bal.sickUsed}/${SICK_DAYS}</td>
-      <td style="padding:8px 12px;color:#8b5cf6">${cum}</td>
-      <td style="padding:8px 12px;color:#f59e0b">${halfDays||'—'}</td>
+    const pctN = Math.round(bal.normalUsed/36*100);
+    const pctS = Math.round(bal.sickUsed/30*100);
+    return `<tr style="background:${i%2===0?'#ffffff':'#f8fafc'}">
+      <td style="padding:10px 14px;text-align:center;font-weight:700;color:#64748b;border:1px solid #e2e8f0">${i+1}</td>
+      <td style="padding:10px 14px;font-weight:800;color:#1e293b;border:1px solid #e2e8f0">${f.name}</td>
+      <td style="padding:10px 14px;color:#334155;border:1px solid #e2e8f0">${f.dept||'—'}</td>
+      <td style="padding:10px 14px;color:#334155;border:1px solid #e2e8f0">${f.rank||'—'}</td>
+      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:10px;font-weight:700">${bal.normalUsed}</span></td>
+      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:10px;font-weight:700">${bal.normal}</span></td>
+      <td style="padding:10px 14px;text-align:center;color:#64748b;border:1px solid #e2e8f0">${pctN}%</td>
+      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:10px;font-weight:700">${bal.sickUsed}</span></td>
+      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#f1f5f9;color:#475569;padding:3px 10px;border-radius:10px;font-weight:700">${bal.sick}</span></td>
+      <td style="padding:10px 14px;text-align:center;color:#64748b;border:1px solid #e2e8f0">${pctS}%</td>
+      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#ede9fe;color:#7c3aed;padding:3px 10px;border-radius:10px;font-weight:700">${cum}</span></td>
+      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0">${halfDays>0?`<span style="background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:10px;font-weight:700">${halfDays}</span>`:'—'}</td>
     </tr>`;
   }).join('');
 
-  const win = window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-  <title>تقرير الإجازات ${yFilter}</title>
-  <style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;color:#1e293b}
-  h1{font-size:20px;margin-bottom:4px}p{font-size:13px;color:#64748b;margin-bottom:20px}
-  table{width:100%;border-collapse:collapse}
-  th{background:#6366f1;color:#fff;padding:10px 12px;font-size:13px;text-align:right}
-  tr:nth-child(even){background:#f8fafc}
-  @media print{button{display:none}}</style></head><body>
-  <h1>📋 تقرير إجازات التدريسيين</h1>
-  <p>السنة الدراسية: ${yFilter} | تاريخ الطباعة: ${new Date().toLocaleDateString('ar-IQ')}</p>
-  <button onclick="window.print()" style="padding:8px 20px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;margin-bottom:16px">🖨️ طباعة</button>
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;direction:rtl;}table{border-collapse:collapse;width:100%;}</style></head><body>
+  <div style="font-size:18px;font-weight:bold;color:#1e293b;margin-bottom:4px;">📊 إحصائيات إجازات التدريسيين</div>
+  <div style="font-size:13px;color:#64748b;margin-bottom:20px;">السنة الدراسية: ${yFilter} | تاريخ التصدير: ${new Date().toLocaleDateString('ar-IQ')} | عدد التدريسيين: ${faculty.length}</div>
   <table>
-  <thead><tr><th>#</th><th>الاسم</th><th>القسم</th><th>اعتيادية</th><th>مرضية</th><th>تراكمي</th><th>نصف راتب</th></tr></thead>
-  <tbody>${rows}</tbody></table></body></html>`);
+    <thead>
+      <tr style="background:#6366f1">
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">#</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">الاسم</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">القسم</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">الدرجة</th>
+        <th colspan="3" style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#2563eb">الإجازة الاعتيادية (36 يوم)</th>
+        <th colspan="3" style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#dc2626">الإجازة المرضية (30 يوم)</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#7c3aed">تراكمي</th>
+        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#d97706">نصف راتب</th>
+      </tr>
+      <tr style="background:#f1f5f9">
+        <th colspan="4" style="border:1px solid #e2e8f0;padding:7px 14px;color:#64748b;font-size:12px;"></th>
+        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">مستخدم</th>
+        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">متبقي</th>
+        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">%</th>
+        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">مستخدم</th>
+        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">متبقي</th>
+        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">%</th>
+        <th colspan="2" style="border:1px solid #e2e8f0;padding:7px 14px"></th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table></body></html>`;
+
+  const blob = new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`إحصائيات_${yFilter}.xls`; a.click();
+  showToast('📊 تم تصدير ملف Excel بنجاح', 'green');
+}
+
+function exportPDF() {
+  // PDF for leaves log
+  const fFilter = document.getElementById('log-faculty-filter')?.value||'';
+  const tFilter = document.getElementById('log-type-filter')?.value||'';
+  const yFilter = document.getElementById('log-year-filter')?.value||'';
+  const typeMap = {normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية - نصف راتب'};
+
+  const filtered = leaves.filter(l=>{
+    if (l.type==='cum-add') return false;
+    if (fFilter && l.facultyId!==fFilter) return false;
+    if (tFilter && l.type!==tFilter) return false;
+    if (yFilter && l.year!==yFilter) return false;
+    return true;
+  }).sort((a,b)=>b.id.localeCompare(a.id));
+
+  const totalDays = filtered.reduce((s,l)=>s+l.days,0);
+  const rows = filtered.map((l,i)=>{
+    const f = faculty.find(x=>x.id===l.facultyId);
+    const tName = typeMap[l.type]||l.type;
+    const tColor = l.type==='half'?'#d97706':l.type==='sick'?'#dc2626':l.type==='cumulative'?'#7c3aed':'#059669';
+    const tBg = l.type==='half'?'#fef3c7':l.type==='sick'?'#fee2e2':l.type==='cumulative'?'#ede9fe':'#dcfce7';
+    return `<tr style="background:${i%2===0?'#fff':'#f8fafc'}">
+      <td>${i+1}</td>
+      <td><strong>${f?.name||'—'}</strong></td>
+      <td>${f?.dept||'—'}</td>
+      <td><span style="background:${tBg};color:${tColor};padding:2px 9px;border-radius:10px;font-size:12px;font-weight:700">${tName}</span></td>
+      <td>${l.fromDate}</td><td>${l.toDate}</td>
+      <td style="text-align:center;font-weight:800;color:#2563eb">${l.days}</td>
+      <td>${l.year}</td>
+      <td style="color:#64748b">${l.notes||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  openPrintWindow('📋 سجل إجازات التدريسيين', yFilter||'جميع السنوات', filtered.length, totalDays,
+    `<thead><tr>
+      <th>#</th><th>التدريسي</th><th>القسم</th><th>نوع الإجازة</th>
+      <th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th>
+    </tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr style="background:#f1f5f9"><td colspan="6" style="font-weight:bold;padding:10px 14px">الإجمالي</td>
+    <td style="font-weight:900;color:#2563eb;font-size:18px;text-align:center;padding:10px 14px">${totalDays}</td>
+    <td colspan="2"></td></tr></tfoot>`
+  );
+}
+
+function exportStatsPDF() {
+  const cy = currentYear();
+  const yFilter = document.getElementById('stats-year-filter')?.value || cy;
+
+  const rows = faculty.map((f,i)=>{
+    const bal = getBalance(f.id, yFilter);
+    const cum = getCumBalance(f.id);
+    const halfDays = leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0);
+    const pctN = Math.round(bal.normalUsed/36*100);
+    const pctS = Math.round(bal.sickUsed/30*100);
+    const barN = `<div style="background:#e2e8f0;border-radius:4px;height:6px;width:80px;display:inline-block;vertical-align:middle;margin-right:6px"><div style="background:#2563eb;height:6px;border-radius:4px;width:${Math.min(100,pctN)}%"></div></div>`;
+    const barS = `<div style="background:#e2e8f0;border-radius:4px;height:6px;width:80px;display:inline-block;vertical-align:middle;margin-right:6px"><div style="background:#dc2626;height:6px;border-radius:4px;width:${Math.min(100,pctS)}%"></div></div>`;
+    return `<tr style="background:${i%2===0?'#fff':'#f8fafc'}">
+      <td>${i+1}</td>
+      <td><strong>${f.name}</strong></td>
+      <td>${f.dept||'—'}</td>
+      <td>${f.rank||'—'}</td>
+      <td><span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:8px;font-weight:700">${bal.normalUsed}</span></td>
+      <td><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:8px;font-weight:700">${bal.normal}</span> ${barN}${pctN}%</td>
+      <td><span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:8px;font-weight:700">${bal.sickUsed}</span></td>
+      <td><span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:8px;font-weight:700">${bal.sick}</span> ${barS}${pctS}%</td>
+      <td><span style="background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:8px;font-weight:700">${cum}</span></td>
+      <td>${halfDays>0?`<span style="background:#fef3c7;color:#d97706;padding:2px 8px;border-radius:8px;font-weight:700">${halfDays}</span>`:'—'}</td>
+    </tr>`;
+  }).join('');
+
+  openPrintWindow('📊 إحصائيات إجازات التدريسيين', yFilter, faculty.length, null,
+    `<thead><tr>
+      <th>#</th><th>الاسم</th><th>القسم</th><th>الدرجة</th>
+      <th>اعتيادية مستخدمة</th><th>اعتيادية متبقية</th>
+      <th>مرضية مستخدمة</th><th>مرضية متبقية</th>
+      <th>تراكمي</th><th>نصف راتب</th>
+    </tr></thead><tbody>${rows}</tbody>`
+  );
+}
+
+function openPrintWindow(title, subtitle, count, totalDays, tableBody) {
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+<title>${title}</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Cairo',Arial,sans-serif;direction:rtl;background:#f8fafc;color:#1e293b;padding:0;}
+  .header{background:linear-gradient(135deg,#6366f1,#2563eb);color:#fff;padding:28px 36px;margin-bottom:0;}
+  .header h1{font-size:22px;font-weight:800;margin-bottom:6px;}
+  .header-meta{display:flex;gap:24px;font-size:13px;opacity:0.85;flex-wrap:wrap;}
+  .meta-item{display:flex;align-items:center;gap:6px;}
+  .content{padding:24px 36px;}
+  .print-btn{background:#fff;color:#6366f1;border:none;padding:10px 22px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+  .print-btn:hover{background:#f1f5f9;}
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 20px rgba(99,102,241,0.1);}
+  thead tr{background:linear-gradient(135deg,#6366f1,#2563eb);}
+  thead th{padding:12px 14px;color:#fff;font-size:12px;font-weight:700;text-align:right;white-space:nowrap;border-bottom:2px solid rgba(255,255,255,0.2);}
+  tbody td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+  tfoot td{font-size:14px;}
+  .footer{text-align:center;padding:16px;color:#94a3b8;font-size:12px;margin-top:20px;}
+  @media print{.print-btn{display:none;}body{background:#fff;}thead tr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+</style>
+</head><body>
+<div class="header">
+  <h1>${title}</h1>
+  <div class="header-meta">
+    <div class="meta-item">📅 ${subtitle}</div>
+    <div class="meta-item">👥 العدد: ${count}</div>
+    ${totalDays!==null?`<div class="meta-item">📊 إجمالي الأيام: ${totalDays}</div>`:''}
+    <div class="meta-item">🕐 ${new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+  </div>
+</div>
+<div class="content">
+  <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+  <table>${tableBody}</table>
+  <div class="footer">نظام إجازات التدريسيين — تم إنشاء هذا التقرير تلقائياً</div>
+</div>
+</body></html>`);
   win.document.close();
+}
+
+// ==================== DATABASE ====================
+function renderDbInfo() {
+  const totalLeaves = leaves.filter(l=>l.type!=='cum-add').length;
+  const totalDays = leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0);
+  const depts = [...new Set(faculty.map(f=>f.dept).filter(Boolean))].length;
+  const lastExport = localStorage.getItem('lastExportDate') || 'لم يتم التصدير بعد';
+
+  document.getElementById('db-info-grid').innerHTML = `
+    <div style="background:rgba(37,99,235,0.07);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:var(--accent)">${faculty.length}</div>
+      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">👨‍🏫 تدريسي</div>
+    </div>
+    <div style="background:rgba(16,185,129,0.07);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:var(--green)">${totalLeaves}</div>
+      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">📅 سجل إجازة</div>
+    </div>
+    <div style="background:rgba(99,102,241,0.07);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:var(--accent3)">${totalDays}</div>
+      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">📊 إجمالي أيام</div>
+    </div>
+    <div style="background:rgba(139,92,246,0.07);border-radius:12px;padding:16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:var(--purple)">${depts}</div>
+      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">🏛️ قسم</div>
+    </div>
+    <div style="background:rgba(245,158,11,0.07);border-radius:12px;padding:16px;text-align:center;grid-column:span 2;">
+      <div style="font-size:15px;color:#000;font-weight:600;margin-bottom:4px;">⏱️ آخر تصدير</div>
+      <div style="font-size:15px;font-weight:700;color:#000">${lastExport}</div>
+    </div>
+  `;
+}
+
+async function exportDatabase() {
+  const exportData = {
+    version: 1,
+    exportDate: new Date().toISOString(),
+    exportDateAr: new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),
+    systemName: 'نظام إجازات التدريسيين',
+    faculty,
+    leaves,
+    stats: {
+      totalFaculty: faculty.length,
+      totalLeaves: leaves.filter(l=>l.type!=='cum-add').length,
+      totalDays: leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0)
+    }
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json],{type:'application/json;charset=utf-8;'});
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().split('T')[0];
+  a.href = URL.createObjectURL(blob);
+  a.download = `نظام_الاجازات_نسخة_احتياطية_${dateStr}.json`;
+  a.click();
+  localStorage.setItem('lastExportDate', new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
+  showToast('✅ تم تنزيل قاعدة البيانات بنجاح', 'green');
+  setTimeout(renderDbInfo, 500);
+}
+
+async function importDatabase(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.faculty || !data.leaves) {
+        showToast('❌ الملف غير صالح — تأكد من أنه نسخة احتياطية صحيحة', 'red');
+        return;
+      }
+      showConfirm(`هل تريد استيراد البيانات من ملف "${file.name}"؟\nسيتم استبدال ${faculty.length} تدريسي و${leaves.length} سجل إجازة بالبيانات الجديدة.`, async () => {
+        try {
+          // Clear existing
+          for (const f of faculty) await dbDelete('faculty', f.id);
+          for (const l of leaves) await dbDelete('leaves', l.id);
+          // Insert new
+          for (const f of data.faculty) await dbPut('faculty', f);
+          for (const l of data.leaves) await dbPut('leaves', l);
+          faculty = await dbAll('faculty');
+          leaves = await dbAll('leaves');
+          populateFilters();
+          renderDashboard();
+          renderFacultyList();
+          renderDbInfo();
+          showToast(`✅ تم استيراد ${faculty.length} تدريسي و${leaves.length} سجل بنجاح`, 'green');
+        } catch(err) {
+          showToast('❌ حدث خطأ أثناء الاستيراد', 'red');
+        }
+      });
+    } catch(err) {
+      showToast('❌ تعذر قراءة الملف — تأكد أنه ملف JSON صالح', 'red');
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ==================== FILTERS ====================
