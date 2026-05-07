@@ -4,6 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>نظام إجازات التدريسيين</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="الإجازات">
+  <link rel="apple-touch-icon" href="icon-apple.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+  <link rel="shortcut icon" href="favicon.ico">
+
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -356,7 +369,69 @@
   ::-webkit-scrollbar-track { background:transparent; }
   ::-webkit-scrollbar-thumb { background:rgba(99,102,241,0.25); border-radius:10px; }
 
-  /* half-salary highlight */
+  /* ===== PWA INSTALL BUTTON ===== */
+  #pwa-install-btn {
+    display: none;
+    position: fixed;
+    bottom: 28px;
+    left: 28px;
+    z-index: 9998;
+    background: linear-gradient(135deg, #6366f1, #2563eb);
+    color: #fff;
+    border: none;
+    border-radius: 16px;
+    padding: 14px 22px;
+    font-family: 'Cairo', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 8px 28px rgba(99,102,241,0.45);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: pwaSlideUp 0.4s ease;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  #pwa-install-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 36px rgba(99,102,241,0.55);
+  }
+  @keyframes pwaSlideUp {
+    from { transform: translateY(80px); opacity: 0; }
+    to   { transform: translateY(0);   opacity: 1; }
+  }
+  #pwa-install-btn .pwa-icon { font-size: 22px; }
+  #pwa-install-btn .pwa-text { line-height: 1.25; }
+  #pwa-install-btn .pwa-text span { display: block; font-size: 11px; font-weight: 400; opacity: 0.85; }
+
+  /* iOS install banner */
+  #ios-install-banner {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 9998;
+    background: rgba(255,255,255,0.96);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(99,102,241,0.15);
+    padding: 18px 24px 28px;
+    box-shadow: 0 -8px 32px rgba(99,102,241,0.12);
+    animation: pwaSlideUp 0.35s ease;
+    direction: rtl;
+  }
+  #ios-install-banner .ios-title {
+    font-size: 16px; font-weight: 800; color: #000; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  #ios-install-banner .ios-title img { width: 36px; height: 36px; border-radius: 8px; }
+  #ios-install-banner .ios-steps {
+    font-size: 14px; color: #000; line-height: 1.8;
+  }
+  #ios-install-banner .ios-close {
+    position: absolute; top: 14px; left: 16px;
+    background: rgba(100,116,139,0.12); border: none; border-radius: 8px;
+    padding: 6px 10px; cursor: pointer; font-size: 14px; color: #000;
+  }
+
   .half-salary-row { background:rgba(245,158,11,0.07) !important; }
   .half-salary-row td { color:#000 !important; font-weight:600; }
 </style>
@@ -1882,6 +1957,82 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 
 // ==================== START ====================
 init();
+</script>
+<!-- PWA Install Button (Android/Desktop Chrome) -->
+<button id="pwa-install-btn" style="display:none;" onclick="installPWA()">
+  <span class="pwa-icon">📲</span>
+  <span class="pwa-text">
+    تثبيت التطبيق
+    <span>أضف إلى الشاشة الرئيسية</span>
+  </span>
+</button>
+
+<!-- iOS Install Banner -->
+<div id="ios-install-banner" style="display:none;">
+  <button class="ios-close" onclick="document.getElementById('ios-install-banner').style.display='none'">✕</button>
+  <div class="ios-title">
+    <img src="icon-apple.png" alt="icon">
+    تثبيت نظام الإجازات
+  </div>
+  <div class="ios-steps">
+    اضغط على زر <strong>المشاركة</strong> ثم اختر <strong>"إضافة إلى الشاشة الرئيسية"</strong>
+  </div>
+</div>
+
+<script>
+// ==================== PWA ====================
+let deferredPrompt = null;
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW error:', err));
+  });
+}
+
+// Capture install prompt (Chrome/Android/Desktop)
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  btn.style.display = 'flex';
+});
+
+// Handle install click
+function installPWA() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(result => {
+    if (result.outcome === 'accepted') {
+      document.getElementById('pwa-install-btn').style.display = 'none';
+      showToast('✅ تم تثبيت التطبيق بنجاح!', 'green');
+    }
+    deferredPrompt = null;
+  });
+}
+
+// Hide button after install
+window.addEventListener('appinstalled', () => {
+  document.getElementById('pwa-install-btn').style.display = 'none';
+  deferredPrompt = null;
+});
+
+// iOS detection — show banner if not already installed
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function isInStandaloneMode() {
+  return window.navigator.standalone === true ||
+         window.matchMedia('(display-mode: standalone)').matches;
+}
+
+if (isIOS() && !isInStandaloneMode()) {
+  setTimeout(() => {
+    document.getElementById('ios-install-banner').style.display = 'block';
+  }, 2500);
+}
 </script>
 </body>
 </html>
