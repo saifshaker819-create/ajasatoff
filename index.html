@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>نظام إجازات التدريسيين</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --glass-bg: rgba(255,255,255,0.18);
+    --glass-border: rgba(255,255,255,0.38);
+    --glass-shadow: 0 8px 32px rgba(31,38,135,0.13);
+    --card-bg: rgba(255,255,255,0.22);
+    --card-border: rgba(255,255,255,0.45);
+    --accent: #2563eb;
+    --accent2: #0ea5e9;
+    --accent3: #6366f1;
+    --green: #10b981;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --purple: #8b5cf6;
+    --text-dark: #1e293b;
+    --text-mid: #334155;
+    --text-light: #64748b;
+    --bg-grad1: #e0e7ff;
+    --bg-grad2: #f0f9ff;
+    --bg-grad3: #fdf4ff;
+    --sidebar-w: 260px;
+    --radius: 20px;
+    --radius-sm: 12px;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Cairo', 'Tajawal', sans-serif;
+    background: linear-gradient(135deg, #dbeafe 0%, #ede9fe 40%, #e0f2fe 70%, #fce7f3 100%);
+    min-height: 100vh;
+    color: var(--text-dark);
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content:'';
+    position:fixed;
+    top:-120px; right:-120px;
+    width:480px; height:480px;
+    border-radius:50%;
+    background: radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%);
+    z-index:0; pointer-events:none;
+  }
+  body::after {
+    content:'';
+    position:fixed;
+    bottom:-100px; left:-100px;
+    width:380px; height:380px;
+    border-radius:50%;
+    background: radial-gradient(circle, rgba(14,165,233,0.15) 0%, transparent 70%);
+    z-index:0; pointer-events:none;
+  }
+
+  /* ===== LAYOUT ===== */
+  #app { display:flex; min-height:100vh; position:relative; z-index:1; }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: rgba(255,255,255,0.28);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-left: 1px solid rgba(255,255,255,0.5);
+    box-shadow: 4px 0 32px rgba(99,102,241,0.08);
+    display:flex; flex-direction:column;
+    padding: 28px 16px;
+    position:fixed; right:0; top:0; bottom:0;
+    z-index:100;
+    transition: transform 0.3s;
+  }
+
+  .sidebar-logo {
+    display:flex; align-items:center; gap:12px;
+    padding: 0 8px 24px;
+    border-bottom: 1px solid rgba(99,102,241,0.12);
+    margin-bottom:24px;
+  }
+  .logo-icon {
+    width:44px; height:44px; border-radius:14px;
+    background: linear-gradient(135deg, #6366f1, #2563eb);
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; box-shadow: 0 4px 16px rgba(99,102,241,0.3);
+  }
+  .logo-text { font-size:15px; font-weight:700; color:var(--text-dark); line-height:1.3; }
+  .logo-sub { font-size:11px; color:var(--text-light); font-weight:400; }
+
+  .nav-section { margin-bottom:8px; padding:0 8px; font-size:10px; font-weight:700; color:var(--text-light); letter-spacing:0.08em; text-transform:uppercase; }
+
+  .nav-item {
+    display:flex; align-items:center; gap:10px;
+    padding:11px 14px; border-radius:var(--radius-sm);
+    cursor:pointer; font-size:14px; font-weight:600;
+    color:var(--text-mid); transition: all 0.2s;
+    margin-bottom:3px; position:relative; overflow:hidden;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { background:rgba(99,102,241,0.09); color:var(--accent3); border-color:rgba(99,102,241,0.12); }
+  .nav-item.active {
+    background: linear-gradient(135deg, rgba(99,102,241,0.14), rgba(37,99,235,0.10));
+    color:var(--accent3); border-color:rgba(99,102,241,0.22);
+    box-shadow: 0 2px 8px rgba(99,102,241,0.08);
+  }
+  .nav-item .icon { font-size:18px; min-width:24px; text-align:center; }
+  .nav-badge { margin-right:auto; background:var(--accent3); color:#fff; font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; }
+
+  .sidebar-footer { margin-top:auto; padding-top:16px; border-top:1px solid rgba(99,102,241,0.1); }
+  .year-badge {
+    background:linear-gradient(135deg,#6366f1,#2563eb);
+    color:#fff; border-radius:10px; padding:10px 14px;
+    font-size:13px; font-weight:700; text-align:center;
+    box-shadow:0 4px 12px rgba(99,102,241,0.25);
+  }
+  .year-badge span { font-size:11px; font-weight:400; opacity:0.85; display:block; margin-bottom:2px; }
+
+  /* ===== MAIN ===== */
+  .main { margin-right: var(--sidebar-w); flex:1; padding:28px; min-width:0; }
+
+  /* ===== PAGE HEADER ===== */
+  .page-header {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:28px; flex-wrap:wrap; gap:12px;
+  }
+  .page-title { font-size:24px; font-weight:800; color:var(--text-dark); }
+  .page-subtitle { font-size:13px; color:var(--text-light); font-weight:400; margin-top:2px; }
+
+  /* ===== GLASS CARD ===== */
+  .glass-card {
+    background:rgba(255,255,255,0.30);
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,0.50);
+    border-radius:var(--radius);
+    box-shadow:0 4px 24px rgba(99,102,241,0.09), 0 1px 4px rgba(0,0,0,0.04);
+    padding:24px;
+  }
+
+  /* ===== STAT CARDS ===== */
+  .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+  .stat-card {
+    background:rgba(255,255,255,0.30);
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,0.50);
+    border-radius:var(--radius);
+    padding:20px;
+    box-shadow:0 4px 20px rgba(99,102,241,0.08);
+    position:relative; overflow:hidden; transition:transform 0.2s, box-shadow 0.2s;
+  }
+  .stat-card:hover { transform:translateY(-3px); box-shadow:0 8px 28px rgba(99,102,241,0.14); }
+  .stat-card::before {
+    content:''; position:absolute; top:-30px; left:-30px;
+    width:100px; height:100px; border-radius:50%;
+    opacity:0.12;
+  }
+  .stat-card.blue::before { background:var(--accent); }
+  .stat-card.green::before { background:var(--green); }
+  .stat-card.red::before { background:var(--red); }
+  .stat-card.purple::before { background:var(--purple); }
+  .stat-card.orange::before { background:var(--orange); }
+  .stat-value { font-size:32px; font-weight:800; margin-bottom:4px; }
+  .stat-card.blue .stat-value { color:var(--accent); }
+  .stat-card.green .stat-value { color:var(--green); }
+  .stat-card.red .stat-value { color:var(--red); }
+  .stat-card.purple .stat-value { color:var(--purple); }
+  .stat-card.orange .stat-value { color:var(--orange); }
+  .stat-label { font-size:12px; color:var(--text-light); font-weight:500; }
+  .stat-icon { font-size:28px; position:absolute; top:16px; left:16px; opacity:0.18; }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    display:inline-flex; align-items:center; gap:7px;
+    padding:10px 20px; border-radius:10px; font-family:inherit;
+    font-size:13px; font-weight:700; cursor:pointer;
+    border:none; transition:all 0.2s; white-space:nowrap;
+  }
+  .btn-primary {
+    background:linear-gradient(135deg,#6366f1,#2563eb);
+    color:#fff; box-shadow:0 4px 14px rgba(99,102,241,0.3);
+  }
+  .btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(99,102,241,0.4); }
+  .btn-green { background:linear-gradient(135deg,#10b981,#059669); color:#fff; box-shadow:0 4px 14px rgba(16,185,129,0.3); }
+  .btn-green:hover { transform:translateY(-1px); }
+  .btn-red { background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; box-shadow:0 4px 14px rgba(239,68,68,0.3); }
+  .btn-outline { background:rgba(255,255,255,0.4); border:1px solid rgba(99,102,241,0.25); color:var(--text-mid); }
+  .btn-outline:hover { background:rgba(255,255,255,0.6); }
+  .btn-sm { padding:7px 14px; font-size:12px; border-radius:8px; }
+  .btn-icon { padding:8px; border-radius:8px; background:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.6); cursor:pointer; font-size:15px; }
+
+  /* ===== TABLE ===== */
+  .table-wrap { overflow-x:auto; border-radius:var(--radius-sm); }
+  table { width:100%; border-collapse:collapse; }
+  thead th {
+    padding:12px 16px; font-size:12px; font-weight:700; color:var(--text-light);
+    background:rgba(99,102,241,0.07); text-align:right; white-space:nowrap;
+    border-bottom:1px solid rgba(99,102,241,0.10);
+  }
+  tbody tr { transition:background 0.15s; border-bottom:1px solid rgba(99,102,241,0.06); }
+  tbody tr:hover { background:rgba(99,102,241,0.04); }
+  tbody td { padding:14px 16px; font-size:13px; color:var(--text-mid); vertical-align:middle; }
+  tbody tr:last-child { border-bottom:none; }
+
+  /* ===== BADGE ===== */
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:700; }
+  .badge-blue { background:rgba(37,99,235,0.1); color:var(--accent); }
+  .badge-green { background:rgba(16,185,129,0.1); color:var(--green); }
+  .badge-red { background:rgba(239,68,68,0.1); color:var(--red); }
+  .badge-orange { background:rgba(245,158,11,0.1); color:var(--orange); }
+  .badge-purple { background:rgba(139,92,246,0.1); color:var(--purple); }
+  .badge-gray { background:rgba(100,116,139,0.1); color:var(--text-light); }
+
+  /* ===== INPUT ===== */
+  .form-group { margin-bottom:16px; }
+  .form-label { font-size:12px; font-weight:700; color:var(--text-mid); margin-bottom:6px; display:block; }
+  .form-input, .form-select {
+    width:100%; padding:11px 14px; border-radius:10px;
+    border:1px solid rgba(99,102,241,0.2);
+    background:rgba(255,255,255,0.6); font-family:inherit;
+    font-size:13px; color:var(--text-dark); outline:none;
+    transition:border 0.2s, box-shadow 0.2s; direction:rtl;
+  }
+  .form-input:focus, .form-select:focus {
+    border-color:var(--accent3); box-shadow:0 0 0 3px rgba(99,102,241,0.1);
+  }
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .form-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    display:none; position:fixed; inset:0; z-index:1000;
+    background:rgba(30,41,59,0.35); backdrop-filter:blur(6px);
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.show { display:flex; animation:fadeIn 0.2s; }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  .modal {
+    background:rgba(255,255,255,0.60); backdrop-filter:blur(28px);
+    -webkit-backdrop-filter:blur(28px);
+    border:1px solid rgba(255,255,255,0.7);
+    border-radius:24px; padding:28px; max-width:520px; width:100%;
+    box-shadow:0 20px 60px rgba(99,102,241,0.18);
+    animation:slideUp 0.25s;
+  }
+  @keyframes slideUp { from{transform:translateY(24px);opacity:0} to{transform:translateY(0);opacity:1} }
+  .modal-lg { max-width:700px; }
+  .modal-sm { max-width:420px; }
+  .modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
+  .modal-title { font-size:18px; font-weight:800; color:var(--text-dark); }
+  .modal-close { background:rgba(100,116,139,0.1); border:none; border-radius:8px; padding:7px 10px; cursor:pointer; font-size:16px; color:var(--text-light); transition:background 0.2s; }
+  .modal-close:hover { background:rgba(239,68,68,0.1); color:var(--red); }
+  .modal-footer { display:flex; gap:10px; justify-content:flex-start; margin-top:20px; }
+
+  /* ===== ALERT MODAL ===== */
+  .alert-icon { font-size:48px; text-align:center; margin-bottom:12px; }
+  .alert-title { font-size:18px; font-weight:800; color:var(--text-dark); text-align:center; margin-bottom:8px; }
+  .alert-msg { font-size:14px; color:var(--text-mid); text-align:center; margin-bottom:20px; line-height:1.6; }
+  .alert-btns { display:flex; gap:10px; justify-content:center; }
+
+  /* ===== PROGRESS BAR ===== */
+  .progress-bar-wrap { background:rgba(99,102,241,0.08); border-radius:20px; height:8px; overflow:hidden; }
+  .progress-bar { height:100%; border-radius:20px; transition:width 0.5s; }
+  .pb-blue { background:linear-gradient(90deg,#6366f1,#2563eb); }
+  .pb-green { background:linear-gradient(90deg,#10b981,#059669); }
+  .pb-red { background:linear-gradient(90deg,#ef4444,#dc2626); }
+  .pb-orange { background:linear-gradient(90deg,#f59e0b,#d97706); }
+  .pb-purple { background:linear-gradient(90deg,#8b5cf6,#7c3aed); }
+
+  /* ===== PROFILE PAGE ===== */
+  .profile-header {
+    display:flex; align-items:center; gap:20px;
+    background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(37,99,235,0.08));
+    border:1px solid rgba(99,102,241,0.18);
+    border-radius:var(--radius); padding:24px; margin-bottom:20px;
+  }
+  .avatar {
+    width:64px; height:64px; border-radius:20px;
+    background:linear-gradient(135deg,#6366f1,#2563eb);
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px; font-weight:800; color:#fff;
+    box-shadow:0 4px 16px rgba(99,102,241,0.3); flex-shrink:0;
+  }
+  .profile-name { font-size:20px; font-weight:800; color:var(--text-dark); }
+  .profile-dep { font-size:13px; color:var(--text-light); margin-top:3px; }
+
+  .leave-blocks { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:20px; }
+  .leave-block {
+    background:rgba(255,255,255,0.30); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.5); border-radius:var(--radius-sm); padding:18px;
+    position:relative; overflow:hidden;
+  }
+  .leave-block-title { font-size:12px; font-weight:700; color:var(--text-light); margin-bottom:8px; }
+  .leave-block-val { font-size:28px; font-weight:800; margin-bottom:4px; }
+  .leave-block-sub { font-size:11px; color:var(--text-light); margin-bottom:10px; }
+
+  /* ===== LEAVE HISTORY TABLE ===== */
+  .section-title { font-size:16px; font-weight:800; color:var(--text-dark); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .section-title .dot { width:8px; height:8px; border-radius:50%; }
+
+  /* ===== SEARCH BAR ===== */
+  .search-wrap { position:relative; }
+  .search-icon { position:absolute; right:13px; top:50%; transform:translateY(-50%); font-size:15px; color:var(--text-light); pointer-events:none; }
+  .search-input { padding-right:38px !important; }
+
+  /* ===== TABS ===== */
+  .tabs { display:flex; gap:6px; margin-bottom:20px; background:rgba(255,255,255,0.30); backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.5); border-radius:12px; padding:5px; width:fit-content; }
+  .tab { padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; color:var(--text-light); transition:all 0.2s; border:none; background:none; font-family:inherit; }
+  .tab.active { background:rgba(255,255,255,0.7); color:var(--accent3); box-shadow:0 2px 8px rgba(99,102,241,0.1); }
+
+  /* ===== TOAST ===== */
+  #toast-container { position:fixed; bottom:24px; right:24px; z-index:9999; display:flex; flex-direction:column; gap:10px; }
+  .toast {
+    background:rgba(255,255,255,0.7); backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,0.6);
+    border-radius:12px; padding:14px 18px;
+    display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600;
+    color:var(--text-dark); box-shadow:0 8px 24px rgba(99,102,241,0.15);
+    animation:slideInToast 0.3s; min-width:260px;
+  }
+  @keyframes slideInToast { from{transform:translateX(60px);opacity:0} to{transform:translateX(0);opacity:1} }
+  .toast-icon { font-size:20px; }
+
+  /* ===== PAGES ===== */
+  .page { display:none; animation:fadeIn 0.25s; }
+  .page.active { display:block; }
+
+  /* ===== FILTERS ===== */
+  .filters-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .filter-item { display:flex; flex-direction:column; gap:5px; }
+  .filter-item label { font-size:11px; font-weight:700; color:var(--text-light); }
+  .filter-item select, .filter-item input { padding:9px 12px; border-radius:9px; border:1px solid rgba(99,102,241,0.18); background:rgba(255,255,255,0.6); font-family:inherit; font-size:13px; color:var(--text-dark); outline:none; }
+
+  /* ===== EMPTY STATE ===== */
+  .empty-state { text-align:center; padding:48px 24px; color:var(--text-light); }
+  .empty-state .empty-icon { font-size:48px; margin-bottom:12px; opacity:0.5; }
+  .empty-state p { font-size:14px; font-weight:500; }
+
+  /* ===== RESPONSIVE ===== */
+  @media(max-width:768px) {
+    .sidebar { transform:translateX(100%); }
+    .sidebar.open { transform:translateX(0); }
+    .main { margin-right:0; padding:16px; }
+    .form-grid, .form-grid-3 { grid-template-columns:1fr; }
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:rgba(99,102,241,0.25); border-radius:10px; }
+
+  /* half-salary highlight */
+  .half-salary-row { background:rgba(245,158,11,0.07) !important; }
+  .half-salary-row td { color:var(--orange) !important; font-weight:600; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">📋</div>
+      <div>
+        <div class="logo-text">نظام الإجازات</div>
+        <div class="logo-sub">إدارة التدريسيين</div>
+      </div>
+    </div>
+
+    <div class="nav-section">القائمة الرئيسية</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="icon">🏠</span> الرئيسية
+    </div>
+    <div class="nav-item" onclick="showPage('faculty')">
+      <span class="icon">👨‍🏫</span> التدريسيون
+      <span class="nav-badge" id="nav-count">0</span>
+    </div>
+    <div class="nav-item" onclick="showPage('leaves')">
+      <span class="icon">📅</span> سجل الإجازات
+    </div>
+
+    <div class="nav-section" style="margin-top:12px;">التقارير</div>
+    <div class="nav-item" onclick="showPage('statistics')">
+      <span class="icon">📊</span> الإحصائيات والتقارير
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="year-badge">
+        <span>السنة الدراسية الحالية</span>
+        <span id="current-year-label">—</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ===== DASHBOARD ===== -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <div class="page-title">لوحة التحكم</div>
+          <div class="page-subtitle" id="dash-date"></div>
+        </div>
+        <button class="btn btn-primary" onclick="openAddFaculty()">➕ إضافة تدريسي</button>
+      </div>
+
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <div class="glass-card">
+        <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>آخر الإجازات المسجلة</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>#</th>
+              <th>التدريسي</th>
+              <th>نوع الإجازة</th>
+              <th>من</th>
+              <th>إلى</th>
+              <th>عدد الأيام</th>
+              <th>الحالة</th>
+            </tr></thead>
+            <tbody id="recent-leaves-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== FACULTY LIST ===== -->
+    <div class="page" id="page-faculty">
+      <div class="page-header">
+        <div>
+          <div class="page-title">التدريسيون</div>
+          <div class="page-subtitle">إدارة قائمة التدريسيين وإجازاتهم</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAddFaculty()">➕ إضافة تدريسي</button>
+      </div>
+
+      <div class="glass-card" style="margin-bottom:20px;">
+        <div class="filters-bar">
+          <div class="filter-item" style="flex:1; min-width:200px;">
+            <label>بحث</label>
+            <div class="search-wrap">
+              <span class="search-icon">🔍</span>
+              <input class="form-input search-input" id="faculty-search" placeholder="ابحث عن تدريسي..." oninput="renderFacultyList()">
+            </div>
+          </div>
+          <div class="filter-item">
+            <label>القسم</label>
+            <select id="faculty-dept-filter" onchange="renderFacultyList()">
+              <option value="">الكل</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="faculty-grid"></div>
+    </div>
+
+    <!-- ===== PROFILE ===== -->
+    <div class="page" id="page-profile">
+      <div class="page-header">
+        <div>
+          <button class="btn btn-outline btn-sm" onclick="showPage('faculty')" style="margin-bottom:8px;">← رجوع</button>
+          <div class="page-title" id="profile-name-header"></div>
+          <div class="page-subtitle" id="profile-dept-header"></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-green" onclick="openAddLeave('normal')">📅 إجازة اعتيادية</button>
+          <button class="btn btn-red" onclick="openAddLeave('sick')">🏥 إجازة مرضية</button>
+          <button class="btn btn-outline" onclick="openEditFaculty()">✏️ تعديل</button>
+          <button class="btn btn-outline" style="color:var(--red);" onclick="confirmDeleteFaculty()">🗑️ حذف</button>
+        </div>
+      </div>
+
+      <div id="profile-content"></div>
+    </div>
+
+    <!-- ===== LEAVES LOG ===== -->
+    <div class="page" id="page-leaves">
+      <div class="page-header">
+        <div>
+          <div class="page-title">سجل الإجازات</div>
+          <div class="page-subtitle">جميع الإجازات المسجلة في النظام</div>
+        </div>
+      </div>
+
+      <div class="glass-card" style="margin-bottom:20px;">
+        <div class="filters-bar">
+          <div class="filter-item">
+            <label>التدريسي</label>
+            <select id="log-faculty-filter" onchange="renderLeavesLog()">
+              <option value="">الكل</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label>نوع الإجازة</label>
+            <select id="log-type-filter" onchange="renderLeavesLog()">
+              <option value="">الكل</option>
+              <option value="normal">اعتيادية</option>
+              <option value="sick">مرضية</option>
+              <option value="half">مرضية بنصف راتب</option>
+              <option value="cumulative">تراكمية</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label>السنة</label>
+            <select id="log-year-filter" onchange="renderLeavesLog()">
+              <option value="">الكل</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label>من تاريخ</label>
+            <input type="date" id="log-from-filter" onchange="renderLeavesLog()">
+          </div>
+          <div class="filter-item">
+            <label>إلى تاريخ</label>
+            <input type="date" id="log-to-filter" onchange="renderLeavesLog()">
+          </div>
+          <div style="margin-top:auto; display:flex; gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="resetLogFilters()">↺ إعادة</button>
+            <button class="btn btn-primary btn-sm" onclick="exportExcel()">📊 Excel</button>
+            <button class="btn btn-outline btn-sm" onclick="exportPDF()">📄 PDF</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>#</th>
+              <th>التدريسي</th>
+              <th>القسم</th>
+              <th>نوع الإجازة</th>
+              <th>من</th>
+              <th>إلى</th>
+              <th>الأيام</th>
+              <th>السنة</th>
+              <th>ملاحظات</th>
+              <th>إجراء</th>
+            </tr></thead>
+            <tbody id="leaves-log-body"></tbody>
+          </table>
+        </div>
+        <div id="log-empty" class="empty-state" style="display:none;">
+          <div class="empty-icon">📭</div>
+          <p>لا توجد إجازات مطابقة للفلاتر المحددة</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== STATISTICS ===== -->
+    <div class="page" id="page-statistics">
+      <div class="page-header">
+        <div>
+          <div class="page-title">الإحصائيات والتقارير</div>
+          <div class="page-subtitle">تقارير شاملة ومفصلة لجميع التدريسيين</div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-primary" onclick="exportStatsExcel()">📊 تصدير Excel</button>
+          <button class="btn btn-outline" onclick="exportStatsPDF()">📄 تصدير PDF</button>
+        </div>
+      </div>
+
+      <div class="glass-card" style="margin-bottom:20px;">
+        <div class="filters-bar">
+          <div class="filter-item">
+            <label>التدريسي</label>
+            <select id="stats-faculty-filter" onchange="renderStats()">
+              <option value="">الكل</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label>القسم</label>
+            <select id="stats-dept-filter" onchange="renderStats()">
+              <option value="">الكل</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label>السنة</label>
+            <select id="stats-year-filter" onchange="renderStats()">
+              <option value="">الكل</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="stats-content"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Add/Edit Faculty Modal -->
+<div class="modal-overlay" id="modal-faculty">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="faculty-modal-title">إضافة تدريسي</div>
+      <button class="modal-close" onclick="closeModal('modal-faculty')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">الاسم الكامل *</label>
+        <input class="form-input" id="f-name" placeholder="أدخل الاسم الكامل">
+      </div>
+      <div class="form-group">
+        <label class="form-label">القسم *</label>
+        <input class="form-input" id="f-dept" placeholder="مثال: قسم الرياضيات">
+      </div>
+      <div class="form-group">
+        <label class="form-label">رقم التوظيف</label>
+        <input class="form-input" id="f-empno" placeholder="اختياري">
+      </div>
+      <div class="form-group">
+        <label class="form-label">الدرجة العلمية</label>
+        <select class="form-select" id="f-rank">
+          <option value="">اختر</option>
+          <option>مدرس مساعد</option>
+          <option>مدرس</option>
+          <option>أستاذ مساعد</option>
+          <option>أستاذ</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">سنة التعيين</label>
+        <input class="form-input" id="f-hire" type="number" placeholder="مثال: 2015">
+      </div>
+      <div class="form-group">
+        <label class="form-label">رصيد تراكمي أولي (أيام)</label>
+        <input class="form-input" id="f-cumulative" type="number" min="0" value="0">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveFaculty()">💾 حفظ</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-faculty')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Leave Modal -->
+<div class="modal-overlay" id="modal-leave">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="leave-modal-title">إضافة إجازة</div>
+      <button class="modal-close" onclick="closeModal('modal-leave')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">تاريخ البداية *</label>
+        <input class="form-input" id="l-from" type="date" oninput="calcLeaveDays()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">عدد الأيام *</label>
+        <input class="form-input" id="l-days" type="number" min="1" max="365" placeholder="أدخل عدد الأيام" oninput="calcLeaveEnd()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">تاريخ الانتهاء (محسوب)</label>
+        <input class="form-input" id="l-to" type="date" readonly style="background:rgba(99,102,241,0.05);">
+      </div>
+      <div class="form-group">
+        <label class="form-label">السنة الدراسية</label>
+        <select class="form-select" id="l-year"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ملاحظات</label>
+      <input class="form-input" id="l-notes" placeholder="ملاحظات إضافية (اختياري)">
+    </div>
+    <div id="leave-info-box" style="padding:12px 16px; border-radius:10px; background:rgba(99,102,241,0.07); border:1px solid rgba(99,102,241,0.12); font-size:13px; color:var(--text-mid); margin-bottom:4px; display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveLeave()">💾 تسجيل الإجازة</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-leave')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alert Modal (yes/no) -->
+<div class="modal-overlay" id="modal-alert">
+  <div class="modal modal-sm">
+    <div class="alert-icon" id="alert-icon">⚠️</div>
+    <div class="alert-title" id="alert-title">تنبيه</div>
+    <div class="alert-msg" id="alert-msg"></div>
+    <div class="alert-btns">
+      <button class="btn btn-primary" id="alert-yes" onclick="alertAction(true)">✅ نعم</button>
+      <button class="btn btn-outline" onclick="alertAction(false)">❌ لا</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal modal-sm">
+    <div class="alert-icon">🗑️</div>
+    <div class="alert-title">تأكيد الحذف</div>
+    <div class="alert-msg" id="confirm-msg"></div>
+    <div class="alert-btns">
+      <button class="btn btn-red" id="confirm-yes">حذف</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-confirm')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<script>
+// ==================== IDB ====================
+const IDB_NAME = 'FacultyLeaveDB';
+const IDB_VER = 1;
+let db;
+
+function initDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('faculty')) d.createObjectStore('faculty', {keyPath:'id'});
+      if (!d.objectStoreNames.contains('leaves')) {
+        const ls = d.createObjectStore('leaves', {keyPath:'id'});
+        ls.createIndex('facultyId','facultyId',{unique:false});
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror = e => rej(e);
+  });
+}
+
+function dbAll(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store,'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej();
+  });
+}
+function dbPut(store, obj) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store,'readwrite');
+    const req = tx.objectStore(store).put(obj);
+    req.onsuccess = () => res();
+    req.onerror = () => rej();
+  });
+}
+function dbDelete(store, id) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store,'readwrite');
+    const req = tx.objectStore(store).delete(id);
+    req.onsuccess = () => res();
+    req.onerror = () => rej();
+  });
+}
+
+// ==================== STATE ====================
+let faculty = [];
+let leaves = [];
+let currentFacultyId = null;
+let currentLeaveType = 'normal';
+let alertCallback = null;
+
+const NORMAL_DAYS = 36;
+const SICK_DAYS = 30;
+
+function currentYear() {
+  const now = new Date();
+  const y = now.getFullYear();
+  return now.getMonth() >= 8 ? `${y}/${y+1}` : `${y-1}/${y}`;
+}
+
+function yearLabel(y) { return y; }
+
+function getYearsList() {
+  const start = 2020;
+  const end = new Date().getFullYear() + 2;
+  const ys = [];
+  for (let y = start; y <= end; y++) {
+    ys.push(`${y}/${y+1}`);
+  }
+  return ys;
+}
+
+// ==================== INIT ====================
+async function init() {
+  await initDB();
+  faculty = await dbAll('faculty');
+  leaves = await dbAll('leaves');
+
+  const cy = currentYear();
+  document.getElementById('current-year-label').textContent = cy;
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('ar-IQ', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  renderDashboard();
+  renderFacultyList();
+  populateFilters();
+}
+
+// ==================== NAVIGATION ====================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const items = document.querySelectorAll('.nav-item');
+  items.forEach(i => { if (i.textContent.includes(pageNames[name])) i.classList.add('active'); });
+  if (name === 'leaves') renderLeavesLog();
+  if (name === 'statistics') renderStats();
+  if (name === 'dashboard') renderDashboard();
+}
+const pageNames = { dashboard:'الرئيسية', faculty:'التدريسيون', profile:'', leaves:'سجل', statistics:'الإحصائيات' };
+
+// ==================== DASHBOARD ====================
+function renderDashboard() {
+  const cy = currentYear();
+  const totalFaculty = faculty.length;
+  const cyLeaves = leaves.filter(l => l.year === cy);
+  const totalNormal = cyLeaves.filter(l=>l.type==='normal'||l.type==='cumulative').reduce((s,l)=>s+l.days,0);
+  const totalSick = cyLeaves.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
+  const halfSalary = cyLeaves.filter(l=>l.type==='half').length;
+
+  document.getElementById('nav-count').textContent = totalFaculty;
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card blue"><span class="stat-icon">👨‍🏫</span><div class="stat-value">${totalFaculty}</div><div class="stat-label">عدد التدريسيين</div></div>
+    <div class="stat-card green"><span class="stat-icon">📅</span><div class="stat-value">${totalNormal}</div><div class="stat-label">أيام إجازات اعتيادية (${cy})</div></div>
+    <div class="stat-card red"><span class="stat-icon">🏥</span><div class="stat-value">${totalSick}</div><div class="stat-label">أيام إجازات مرضية (${cy})</div></div>
+    <div class="stat-card orange"><span class="stat-icon">💊</span><div class="stat-value">${halfSalary}</div><div class="stat-label">حالات نصف راتب</div></div>
+    <div class="stat-card purple"><span class="stat-icon">📦</span><div class="stat-value">${faculty.reduce((s,f)=>s+getCumBalance(f.id),0)}</div><div class="stat-label">إجمالي الرصيد التراكمي</div></div>
+  `;
+
+  const recent = [...leaves].sort((a,b)=>b.id-a.id).slice(0,8);
+  const tbody = document.getElementById('recent-leaves-body');
+  tbody.innerHTML = recent.length ? recent.map((l,i)=>{
+    const f = faculty.find(x=>x.id===l.facultyId);
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${f?f.name:'—'}</strong></td>
+      <td>${leaveTypeBadge(l.type)}</td>
+      <td>${l.fromDate}</td>
+      <td>${l.toDate}</td>
+      <td><strong>${l.days}</strong></td>
+      <td>${l.year}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة بعد</p></div></td></tr>`;
+}
+
+function leaveTypeBadge(t) {
+  const map = { normal:'<span class="badge badge-blue">📅 اعتيادية</span>', sick:'<span class="badge badge-red">🏥 مرضية</span>', cumulative:'<span class="badge badge-purple">📦 تراكمية</span>', half:'<span class="badge badge-orange">💰 مرضية - نصف راتب</span>' };
+  return map[t] || t;
+}
+
+// ==================== BALANCES ====================
+function getBalance(facultyId, year) {
+  const fac = faculty.find(f=>f.id===facultyId);
+  if (!fac) return {normal:0, sick:0, normalUsed:0, sickUsed:0};
+  const fLeaves = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
+  const normalUsed = fLeaves.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
+  const sickUsed = fLeaves.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
+  return {
+    normal: NORMAL_DAYS - normalUsed,
+    sick: SICK_DAYS - sickUsed,
+    normalUsed, sickUsed
+  };
+}
+
+function getCumBalance(facultyId) {
+  const fac = faculty.find(f=>f.id===facultyId);
+  if (!fac) return 0;
+  const cumUsed = leaves.filter(l=>l.facultyId===facultyId && l.type==='cumulative').reduce((s,l)=>s+l.days,0);
+  const cumAdded = leaves.filter(l=>l.facultyId===facultyId && l.type==='cum-add').reduce((s,l)=>s+l.days,0);
+  return (fac.initialCumulative || 0) + cumAdded - cumUsed;
+}
+
+// ==================== FACULTY LIST ====================
+function renderFacultyList() {
+  const q = (document.getElementById('faculty-search')?.value||'').trim().toLowerCase();
+  const dept = document.getElementById('faculty-dept-filter')?.value || '';
+  const cy = currentYear();
+
+  let list = faculty.filter(f => {
+    const matchQ = !q || f.name.toLowerCase().includes(q) || (f.dept||'').toLowerCase().includes(q);
+    const matchD = !dept || f.dept === dept;
+    return matchQ && matchD;
+  });
+
+  const grid = document.getElementById('faculty-grid');
+  if (!list.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">👨‍🏫</div><p>لا يوجد تدريسيون مسجلون. أضف أول تدريسي!</p></div>`;
+    return;
+  }
+
+  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">${
+    list.map(f => {
+      const bal = getBalance(f.id, cy);
+      const cum = getCumBalance(f.id);
+      const pctN = Math.min(100, Math.round((NORMAL_DAYS-bal.normal)/NORMAL_DAYS*100));
+      const pctS = Math.min(100, Math.round((SICK_DAYS-bal.sick)/SICK_DAYS*100));
+      return `
+      <div class="glass-card" style="cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" onmouseenter="this.style.transform='translateY(-4px)';this.style.boxShadow='0 12px 32px rgba(99,102,241,0.15)'" onmouseleave="this.style.transform='';this.style.boxShadow=''" onclick="openProfile('${f.id}')">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <div class="avatar">${f.name.charAt(0)}</div>
+          <div>
+            <div style="font-size:15px;font-weight:800;color:var(--text-dark)">${f.name}</div>
+            <div style="font-size:12px;color:var(--text-light);margin-top:2px;">${f.dept||'—'} ${f.rank?'• '+f.rank:''}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;text-align:center;">
+          <div style="background:rgba(37,99,235,0.07);border-radius:10px;padding:10px;">
+            <div style="font-size:18px;font-weight:800;color:var(--accent);">${bal.normal}</div>
+            <div style="font-size:10px;color:var(--text-light);font-weight:600;">اعتيادية متبقية</div>
+          </div>
+          <div style="background:rgba(239,68,68,0.07);border-radius:10px;padding:10px;">
+            <div style="font-size:18px;font-weight:800;color:var(--red);">${bal.sick}</div>
+            <div style="font-size:10px;color:var(--text-light);font-weight:600;">مرضية متبقية</div>
+          </div>
+          <div style="background:rgba(139,92,246,0.07);border-radius:10px;padding:10px;">
+            <div style="font-size:18px;font-weight:800;color:var(--purple);">${cum}</div>
+            <div style="font-size:10px;color:var(--text-light);font-weight:600;">تراكمي</div>
+          </div>
+        </div>
+        <div style="margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-light);margin-bottom:4px;"><span>اعتيادية مستخدمة</span><span>${bal.normalUsed}/${NORMAL_DAYS}</span></div>
+          <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-light);margin-bottom:4px;"><span>مرضية مستخدمة</span><span>${bal.sickUsed}/${SICK_DAYS}</span></div>
+          <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
+        </div>
+      </div>`;
+    }).join('')
+  }</div>`;
+}
+
+// ==================== PROFILE ====================
+function openProfile(id) {
+  currentFacultyId = id;
+  const fac = faculty.find(f=>f.id===id);
+  if (!fac) return;
+  document.getElementById('profile-name-header').textContent = fac.name;
+  document.getElementById('profile-dept-header').textContent = (fac.dept||'') + (fac.rank?' • '+fac.rank:'') + (fac.empNo?' • رقم التوظيف: '+fac.empNo:'');
+  renderProfile(id);
+  showPage('profile');
+}
+
+function renderProfile(id) {
+  const fac = faculty.find(f=>f.id===id);
+  if (!fac) return;
+  const cy = currentYear();
+  const bal = getBalance(id, cy);
+  const cum = getCumBalance(id);
+
+  // All leaves for this faculty
+  const fLeaves = leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
+
+  const pctN = Math.min(100,Math.round(bal.normalUsed/NORMAL_DAYS*100));
+  const pctS = Math.min(100,Math.round(bal.sickUsed/SICK_DAYS*100));
+
+  document.getElementById('profile-content').innerHTML = `
+    <div class="profile-header">
+      <div class="avatar" style="width:72px;height:72px;font-size:30px;">${fac.name.charAt(0)}</div>
+      <div style="flex:1;">
+        <div class="profile-name">${fac.name}</div>
+        <div class="profile-dep">${fac.dept||'—'} ${fac.rank?'• '+fac.rank:''} ${fac.hireYear?'• منذ '+fac.hireYear:''}</div>
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+          <span class="badge badge-blue">📅 السنة: ${cy}</span>
+          ${fac.empNo?`<span class="badge badge-gray">🆔 ${fac.empNo}</span>`:''}
+        </div>
+      </div>
+    </div>
+
+    <div class="leave-blocks">
+      <div class="leave-block">
+        <div class="leave-block-title">🗂️ الإجازة التراكمية</div>
+        <div class="leave-block-val" style="color:var(--purple);">${cum} <span style="font-size:14px;font-weight:500;">يوم</span></div>
+        <div class="leave-block-sub">الرصيد المتراكم من السنوات السابقة</div>
+        <div class="progress-bar-wrap"><div class="progress-bar pb-purple" style="width:${Math.min(100,cum/100*100)}%"></div></div>
+      </div>
+      <div class="leave-block">
+        <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
+        <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:14px;font-weight:500;">يوم متبقي</span></div>
+        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${NORMAL_DAYS} يوم</div>
+        <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
+      </div>
+      <div class="leave-block">
+        <div class="leave-block-title">🏥 الإجازة المرضية</div>
+        <div class="leave-block-val" style="color:var(--red);">${bal.sick} <span style="font-size:14px;font-weight:500;">يوم متبقي</span></div>
+        <div class="leave-block-sub">مستخدم: ${bal.sickUsed} من ${SICK_DAYS} يوم</div>
+        <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
+      </div>
+      <div class="leave-block" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(249,115,22,0.05));cursor:pointer;" onclick="closeYearBalance('${id}')">
+        <div class="leave-block-title">⚡ إغلاق السنة</div>
+        <div class="leave-block-val" style="color:var(--orange);font-size:16px;margin-top:8px;">نقل الرصيد للتراكمي</div>
+        <div class="leave-block-sub" style="margin-top:4px;">يُنقل الرصيد الاعتيادي المتبقي إلى التراكمي</div>
+      </div>
+    </div>
+
+    <div class="glass-card">
+      <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>سجل الإجازات</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>نوع الإجازة</th><th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th><th>حذف</th>
+          </tr></thead>
+          <tbody>
+            ${fLeaves.length ? fLeaves.map((l,i)=>`
+              <tr class="${l.type==='half'?'half-salary-row':''}">
+                <td>${i+1}</td>
+                <td>${leaveTypeBadge(l.type)}</td>
+                <td>${l.fromDate}</td>
+                <td>${l.toDate}</td>
+                <td><strong>${l.days}</strong></td>
+                <td>${l.year}</td>
+                <td>${l.notes||'—'}</td>
+                <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
+              </tr>`).join('') :
+              `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة لهذا التدريسي</p></div></td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ==================== YEAR CLOSE ====================
+async function closeYearBalance(id) {
+  const cy = currentYear();
+  const bal = getBalance(id, cy);
+  if (bal.normal <= 0) { showToast('⚠️ لا يوجد رصيد اعتيادي متبقي لنقله', 'orange'); return; }
+  showConfirm(`هل تريد نقل ${bal.normal} يوم متبقية من الإجازات الاعتيادية لسنة ${cy} إلى الرصيد التراكمي؟`, async () => {
+    await addLeaveRecord({ facultyId: id, type: 'cum-add', days: bal.normal, fromDate: cy+'-end', toDate: cy+'-end', year: cy, notes: `نقل رصيد نهاية السنة ${cy}` });
+    await renderProfile(id);
+    renderFacultyList();
+    showToast(`✅ تم نقل ${bal.normal} يوم إلى الرصيد التراكمي`, 'green');
+  });
+}
+
+// ==================== ADD FACULTY ====================
+let editingFacultyId = null;
+function openAddFaculty() {
+  editingFacultyId = null;
+  document.getElementById('faculty-modal-title').textContent = 'إضافة تدريسي جديد';
+  ['f-name','f-dept','f-empno','f-hire'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('f-rank').value='';
+  document.getElementById('f-cumulative').value='0';
+  openModal('modal-faculty');
+}
+function openEditFaculty() {
+  const fac = faculty.find(f=>f.id===currentFacultyId);
+  if (!fac) return;
+  editingFacultyId = fac.id;
+  document.getElementById('faculty-modal-title').textContent = 'تعديل بيانات التدريسي';
+  document.getElementById('f-name').value = fac.name||'';
+  document.getElementById('f-dept').value = fac.dept||'';
+  document.getElementById('f-empno').value = fac.empNo||'';
+  document.getElementById('f-hire').value = fac.hireYear||'';
+  document.getElementById('f-rank').value = fac.rank||'';
+  document.getElementById('f-cumulative').value = fac.initialCumulative||0;
+  openModal('modal-faculty');
+}
+async function saveFaculty() {
+  const name = document.getElementById('f-name').value.trim();
+  const dept = document.getElementById('f-dept').value.trim();
+  if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
+  const obj = {
+    id: editingFacultyId || Date.now().toString(),
+    name, dept,
+    empNo: document.getElementById('f-empno').value.trim(),
+    rank: document.getElementById('f-rank').value,
+    hireYear: document.getElementById('f-hire').value,
+    initialCumulative: parseInt(document.getElementById('f-cumulative').value)||0,
+  };
+  await dbPut('faculty', obj);
+  faculty = await dbAll('faculty');
+  closeModal('modal-faculty');
+  renderFacultyList();
+  populateFilters();
+  renderDashboard();
+  showToast(editingFacultyId ? '✅ تم تحديث بيانات التدريسي' : '✅ تم إضافة التدريسي بنجاح', 'green');
+  if (editingFacultyId && currentFacultyId === editingFacultyId) {
+    document.getElementById('profile-name-header').textContent = obj.name;
+    renderProfile(obj.id);
+  }
+}
+function confirmDeleteFaculty() {
+  const fac = faculty.find(f=>f.id===currentFacultyId);
+  showConfirm(`هل أنت متأكد من حذف التدريسي "${fac?.name}" وجميع سجلات إجازاته؟`, async () => {
+    await dbDelete('faculty', currentFacultyId);
+    const fLeaves = leaves.filter(l=>l.facultyId===currentFacultyId);
+    for (const l of fLeaves) await dbDelete('leaves', l.id);
+    faculty = await dbAll('faculty');
+    leaves = await dbAll('leaves');
+    showPage('faculty');
+    renderFacultyList();
+    renderDashboard();
+    populateFilters();
+    showToast('🗑️ تم حذف التدريسي', 'red');
+  });
+}
+
+// ==================== ADD LEAVE ====================
+function openAddLeave(type) {
+  currentLeaveType = type;
+  document.getElementById('leave-modal-title').textContent = type === 'normal' ? '📅 إضافة إجازة اعتيادية' : '🏥 إضافة إجازة مرضية';
+  document.getElementById('l-from').value = '';
+  document.getElementById('l-days').value = '';
+  document.getElementById('l-to').value = '';
+  document.getElementById('l-notes').value = '';
+  document.getElementById('leave-info-box').style.display='none';
+
+  const ySelect = document.getElementById('l-year');
+  const years = getYearsList();
+  const cy = currentYear();
+  ySelect.innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+
+  openModal('modal-leave');
+}
+
+function calcLeaveEnd() {
+  const from = document.getElementById('l-from').value;
+  const days = parseInt(document.getElementById('l-days').value);
+  if (from && days > 0) {
+    const d = new Date(from);
+    d.setDate(d.getDate() + days - 1);
+    document.getElementById('l-to').value = d.toISOString().split('T')[0];
+    updateLeaveInfo();
+  }
+}
+function calcLeaveDays() { calcLeaveEnd(); }
+
+function updateLeaveInfo() {
+  if (!currentFacultyId) return;
+  const year = document.getElementById('l-year').value;
+  const days = parseInt(document.getElementById('l-days').value)||0;
+  const bal = getBalance(currentFacultyId, year);
+  const cum = getCumBalance(currentFacultyId);
+  const box = document.getElementById('leave-info-box');
+  if (!days) { box.style.display='none'; return; }
+
+  if (currentLeaveType === 'normal') {
+    const rem = bal.normal;
+    const color = days > rem ? 'var(--orange)' : 'var(--green)';
+    box.style.display='block';
+    box.innerHTML = `<span style="color:${color};font-weight:700;">📊 الرصيد الاعتيادي المتبقي: ${rem} يوم | الأيام المطلوبة: ${days}</span>${days>rem?`<br><span style="color:var(--orange)">⚠️ سيُقطع ${days-rem} يوم من الرصيد التراكمي (${cum} يوم)</span>`:''}`;
+  } else {
+    const rem = bal.sick;
+    const color = days > rem ? 'var(--orange)' : 'var(--green)';
+    box.style.display='block';
+    box.innerHTML = `<span style="color:${color};font-weight:700;">📊 الرصيد المرضي المتبقي: ${rem} يوم | الأيام المطلوبة: ${days}</span>${days>rem?`<br><span style="color:var(--red)">⚠️ ${days-rem} يوم ستكون بنصف الراتب</span>`:''}`;
+  }
+}
+
+async function saveLeave() {
+  const from = document.getElementById('l-from').value;
+  const days = parseInt(document.getElementById('l-days').value);
+  const year = document.getElementById('l-year').value;
+  const notes = document.getElementById('l-notes').value.trim();
+
+  if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
+
+  const bal = getBalance(currentFacultyId, year);
+  const cum = getCumBalance(currentFacultyId);
+
+  const endDate = document.getElementById('l-to').value;
+
+  if (currentLeaveType === 'normal') {
+    if (bal.normal <= 0) {
+      // All from cumulative
+      showAlert('⚠️', 'انتهى الرصيد الاعتيادي', `هذا التدريسي لا يمتلك رصيداً اعتيادياً لسنة ${year}.\nهل تريد قطع ${days} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async (yes) => {
+        if (!yes) return;
+        if (days > cum) { showToast('❌ الرصيد التراكمي غير كافٍ', 'red'); return; }
+        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days, fromDate:from, toDate:endDate, year, notes});
+        afterSaveLeave();
+      });
+      return;
+    }
+    if (days > bal.normal) {
+      const overflow = days - bal.normal;
+      showAlert('⚠️', 'الرصيد الاعتيادي غير كافٍ', `يمتلك هذا التدريسي ${bal.normal} يوم اعتيادي متبقٍ.\nهل تريد قطع ${overflow} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async (yes) => {
+        if (!yes) return;
+        if (overflow > cum) { showToast('❌ الرصيد التراكمي غير كافٍ لتغطية الفرق', 'red'); return; }
+        await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days:bal.normal, fromDate:from, toDate:endDate, year, notes});
+        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days:overflow, fromDate:from, toDate:endDate, year, notes:'امتداد من التراكمي'});
+        afterSaveLeave();
+      });
+      return;
+    }
+    await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days, fromDate:from, toDate:endDate, year, notes});
+    afterSaveLeave();
+
+  } else { // sick
+    if (bal.sick <= 0) {
+      showAlert('🏥', 'انتهى الرصيد المرضي', `هذا التدريسي استنفد رصيده المرضي لسنة ${year}.\nهل تريد تفعيل الإجازة بنصف الراتب؟`, async (yes) => {
+        if (!yes) return;
+        await addLeaveRecord({facultyId:currentFacultyId, type:'half', days, fromDate:from, toDate:endDate, year, notes: `إجازة مرضية بنصف الراتب - ${notes||''}`});
+        showToast('⚠️ تم تسجيل الإجازة المرضية بنصف الراتب', 'orange');
+        afterSaveLeave(false);
+      });
+      return;
+    }
+    if (days > bal.sick) {
+      const overflow = days - bal.sick;
+      showAlert('🏥', 'الرصيد المرضي غير كافٍ', `يمتلك ${bal.sick} يوم مرضي متبقٍ.\nهل تريد تسجيل ${overflow} يوم بنصف الراتب؟`, async (yes) => {
+        if (!yes) return;
+        await addLeaveRecord({facultyId:currentFacultyId, type:'sick', days:bal.sick, fromDate:from, toDate:endDate, year, notes});
+        await addLeaveRecord({facultyId:currentFacultyId, type:'half', days:overflow, fromDate:from, toDate:endDate, year, notes:'نصف راتب - امتداد مرضي'});
+        showToast('⚠️ تم تسجيل جزء بنصف الراتب', 'orange');
+        afterSaveLeave(false);
+      });
+      return;
+    }
+    await addLeaveRecord({facultyId:currentFacultyId, type:'sick', days, fromDate:from, toDate:endDate, year, notes});
+    afterSaveLeave();
+  }
+}
+
+function afterSaveLeave(showSuccessToast=true) {
+  closeModal('modal-leave');
+  renderProfile(currentFacultyId);
+  renderFacultyList();
+  renderDashboard();
+  if (showSuccessToast) showToast('✅ تم تسجيل الإجازة بنجاح', 'green');
+}
+
+async function addLeaveRecord(data) {
+  const rec = { id: Date.now().toString() + Math.random().toString(36).slice(2), ...data };
+  await dbPut('leaves', rec);
+  leaves = await dbAll('leaves');
+  return rec;
+}
+
+async function deleteLeave(id) {
+  showConfirm('هل تريد حذف هذه الإجازة؟', async () => {
+    await dbDelete('leaves', id);
+    leaves = await dbAll('leaves');
+    renderProfile(currentFacultyId);
+    renderFacultyList();
+    renderDashboard();
+    showToast('🗑️ تم حذف الإجازة', 'red');
+  });
+}
+
+// ==================== LEAVES LOG ====================
+function renderLeavesLog() {
+  const fFilter = document.getElementById('log-faculty-filter')?.value||'';
+  const tFilter = document.getElementById('log-type-filter')?.value||'';
+  const yFilter = document.getElementById('log-year-filter')?.value||'';
+  const fromF = document.getElementById('log-from-filter')?.value||'';
+  const toF = document.getElementById('log-to-filter')?.value||'';
+
+  let list = leaves.filter(l => {
+    if (fFilter && l.facultyId !== fFilter) return false;
+    if (tFilter && l.type !== tFilter) return false;
+    if (yFilter && l.year !== yFilter) return false;
+    if (fromF && l.fromDate < fromF) return false;
+    if (toF && l.fromDate > toF) return false;
+    if (l.type === 'cum-add') return false;
+    return true;
+  }).sort((a,b) => b.id.localeCompare(a.id));
+
+  const tbody = document.getElementById('leaves-log-body');
+  const empty = document.getElementById('log-empty');
+
+  if (!list.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = list.map((l,i) => {
+    const f = faculty.find(x=>x.id===l.facultyId);
+    return `<tr class="${l.type==='half'?'half-salary-row':''}">
+      <td>${i+1}</td>
+      <td><strong>${f?f.name:'—'}</strong></td>
+      <td>${f?f.dept||'—':'—'}</td>
+      <td>${leaveTypeBadge(l.type)}</td>
+      <td>${l.fromDate}</td>
+      <td>${l.toDate}</td>
+      <td><strong>${l.days}</strong></td>
+      <td>${l.year}</td>
+      <td>${l.notes||'—'}</td>
+      <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function resetLogFilters() {
+  ['log-faculty-filter','log-type-filter','log-year-filter','log-from-filter','log-to-filter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  renderLeavesLog();
+}
+
+// ==================== STATISTICS ====================
+function renderStats() {
+  const fFilter = document.getElementById('stats-faculty-filter')?.value||'';
+  const dFilter = document.getElementById('stats-dept-filter')?.value||'';
+  const yFilter = document.getElementById('stats-year-filter')?.value||'';
+  const cy = currentYear();
+
+  let list = faculty.filter(f => {
+    if (fFilter && f.id !== fFilter) return false;
+    if (dFilter && f.dept !== dFilter) return false;
+    return true;
+  });
+
+  const container = document.getElementById('stats-content');
+  if (!list.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>لا توجد بيانات</p></div>'; return; }
+
+  const year = yFilter || cy;
+  const rows = list.map(f => {
+    const bal = getBalance(f.id, year);
+    const cum = getCumBalance(f.id);
+    const fLeaves = leaves.filter(l=>l.facultyId===f.id&&(yFilter?l.year===year:true)&&l.type!=='cum-add');
+    return { f, bal, cum, fLeaves, year };
+  });
+
+  // Summary stats
+  const totNorm = rows.reduce((s,r)=>s+r.bal.normalUsed,0);
+  const totSick = rows.reduce((s,r)=>s+r.bal.sickUsed,0);
+  const totHalf = rows.reduce((s,r)=>s+r.fLeaves.filter(l=>l.type==='half').reduce((a,l)=>a+l.days,0),0);
+  const totCum = rows.reduce((s,r)=>s+r.cum,0);
+
+  container.innerHTML = `
+    <div class="stats-grid" style="margin-bottom:20px;">
+      <div class="stat-card blue"><div class="stat-value">${rows.length}</div><div class="stat-label">عدد التدريسيين</div></div>
+      <div class="stat-card green"><div class="stat-value">${totNorm}</div><div class="stat-label">إجمالي أيام اعتيادية مستخدمة</div></div>
+      <div class="stat-card red"><div class="stat-value">${totSick}</div><div class="stat-label">إجمالي أيام مرضية مستخدمة</div></div>
+      <div class="stat-card orange"><div class="stat-value">${totHalf}</div><div class="stat-label">أيام نصف راتب</div></div>
+      <div class="stat-card purple"><div class="stat-value">${totCum}</div><div class="stat-label">إجمالي الرصيد التراكمي</div></div>
+    </div>
+    <div class="glass-card">
+      <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>تفصيل لكل تدريسي - ${year}</div>
+      <div class="table-wrap" id="stats-table-wrap">
+        <table id="stats-table">
+          <thead><tr>
+            <th>#</th>
+            <th>الاسم</th>
+            <th>القسم</th>
+            <th>الدرجة</th>
+            <th>اعتيادية مستخدمة</th>
+            <th>اعتيادية متبقية</th>
+            <th>مرضية مستخدمة</th>
+            <th>مرضية متبقية</th>
+            <th>تراكمي</th>
+            <th>نصف راتب</th>
+            <th>إجمالي الإجازات</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map((r,i)=>{
+              const halfDays = r.fLeaves.filter(l=>l.type==='half').reduce((a,l)=>a+l.days,0);
+              const total = r.fLeaves.reduce((a,l)=>a+l.days,0);
+              return `<tr>
+                <td>${i+1}</td>
+                <td><strong>${r.f.name}</strong></td>
+                <td>${r.f.dept||'—'}</td>
+                <td>${r.f.rank||'—'}</td>
+                <td><span class="badge badge-blue">${r.bal.normalUsed}</span></td>
+                <td><span class="badge badge-green">${r.bal.normal}</span></td>
+                <td><span class="badge badge-red">${r.bal.sickUsed}</span></td>
+                <td><span class="badge badge-gray">${r.bal.sick}</span></td>
+                <td><span class="badge badge-purple">${r.cum}</span></td>
+                <td>${halfDays>0?`<span class="badge badge-orange">${halfDays}</span>`:'—'}</td>
+                <td><strong>${total}</strong></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ==================== EXPORT ====================
+function exportExcel() {
+  const rows = [['#','التدريسي','القسم','نوع الإجازة','من','إلى','الأيام','السنة','ملاحظات']];
+  const fFilter = document.getElementById('log-faculty-filter')?.value||'';
+  const tFilter = document.getElementById('log-type-filter')?.value||'';
+  const yFilter = document.getElementById('log-year-filter')?.value||'';
+
+  leaves.filter(l=>{
+    if (l.type==='cum-add') return false;
+    if (fFilter && l.facultyId!==fFilter) return false;
+    if (tFilter && l.type!==tFilter) return false;
+    if (yFilter && l.year!==yFilter) return false;
+    return true;
+  }).forEach((l,i)=>{
+    const f = faculty.find(x=>x.id===l.facultyId);
+    const typeMap={normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية بنصف راتب'};
+    rows.push([i+1, f?.name||'', f?.dept||'', typeMap[l.type]||l.type, l.fromDate, l.toDate, l.days, l.year, l.notes||'']);
+  });
+  downloadCSV(rows, 'سجل_الإجازات.csv');
+}
+
+function exportStatsExcel() {
+  const cy = currentYear();
+  const yFilter = document.getElementById('stats-year-filter')?.value || cy;
+  const rows = [['#','الاسم','القسم','الدرجة','اعتيادية مستخدمة','اعتيادية متبقية','مرضية مستخدمة','مرضية متبقية','تراكمي','نصف راتب']];
+  faculty.forEach((f,i)=>{
+    const bal = getBalance(f.id, yFilter);
+    const cum = getCumBalance(f.id);
+    const halfDays = leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0);
+    rows.push([i+1,f.name,f.dept||'',f.rank||'',bal.normalUsed,bal.normal,bal.sickUsed,bal.sick,cum,halfDays]);
+  });
+  downloadCSV(rows, `إحصائيات_${yFilter}.csv`);
+}
+
+function downloadCSV(rows, filename) {
+  const bom = '\uFEFF';
+  const csv = bom + rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  showToast('📊 تم تصدير ملف Excel بنجاح', 'green');
+}
+
+function exportPDF() { exportStatsPDF(); }
+
+function exportStatsPDF() {
+  const cy = currentYear();
+  const yFilter = document.getElementById('stats-year-filter')?.value || cy;
+  const rows = faculty.map((f,i)=>{
+    const bal = getBalance(f.id, yFilter);
+    const cum = getCumBalance(f.id);
+    const halfDays = leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0);
+    return `<tr style="border-bottom:1px solid #e2e8f0;">
+      <td style="padding:8px 12px">${i+1}</td>
+      <td style="padding:8px 12px;font-weight:700">${f.name}</td>
+      <td style="padding:8px 12px">${f.dept||'—'}</td>
+      <td style="padding:8px 12px;color:#2563eb">${bal.normalUsed}/${NORMAL_DAYS}</td>
+      <td style="padding:8px 12px;color:#ef4444">${bal.sickUsed}/${SICK_DAYS}</td>
+      <td style="padding:8px 12px;color:#8b5cf6">${cum}</td>
+      <td style="padding:8px 12px;color:#f59e0b">${halfDays||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+  <title>تقرير الإجازات ${yFilter}</title>
+  <style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;color:#1e293b}
+  h1{font-size:20px;margin-bottom:4px}p{font-size:13px;color:#64748b;margin-bottom:20px}
+  table{width:100%;border-collapse:collapse}
+  th{background:#6366f1;color:#fff;padding:10px 12px;font-size:13px;text-align:right}
+  tr:nth-child(even){background:#f8fafc}
+  @media print{button{display:none}}</style></head><body>
+  <h1>📋 تقرير إجازات التدريسيين</h1>
+  <p>السنة الدراسية: ${yFilter} | تاريخ الطباعة: ${new Date().toLocaleDateString('ar-IQ')}</p>
+  <button onclick="window.print()" style="padding:8px 20px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;margin-bottom:16px">🖨️ طباعة</button>
+  <table>
+  <thead><tr><th>#</th><th>الاسم</th><th>القسم</th><th>اعتيادية</th><th>مرضية</th><th>تراكمي</th><th>نصف راتب</th></tr></thead>
+  <tbody>${rows}</tbody></table></body></html>`);
+  win.document.close();
+}
+
+// ==================== FILTERS ====================
+function populateFilters() {
+  const depts = [...new Set(faculty.map(f=>f.dept).filter(Boolean))].sort();
+  const years = getYearsList();
+
+  // Dept filters
+  ['faculty-dept-filter','stats-dept-filter'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<option value="">الكل</option>' + depts.map(d=>`<option value="${d}">${d}</option>`).join('');
+  });
+
+  // Faculty filters
+  ['log-faculty-filter','stats-faculty-filter'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<option value="">الكل</option>' + faculty.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+  });
+
+  // Year filters
+  ['log-year-filter','stats-year-filter'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<option value="">الكل</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  });
+}
+
+// ==================== MODAL HELPERS ====================
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// Alert Modal
+function showAlert(icon, title, msg, callback) {
+  alertCallback = callback;
+  document.getElementById('alert-icon').textContent = icon;
+  document.getElementById('alert-title').textContent = title;
+  document.getElementById('alert-msg').textContent = msg;
+  openModal('modal-alert');
+}
+function alertAction(yes) {
+  closeModal('modal-alert');
+  if (alertCallback) alertCallback(yes);
+  alertCallback = null;
+}
+
+// Confirm Modal
+function showConfirm(msg, callback) {
+  document.getElementById('confirm-msg').textContent = msg;
+  openModal('modal-confirm');
+  document.getElementById('confirm-yes').onclick = () => { closeModal('modal-confirm'); callback(); };
+}
+
+// ==================== TOAST ====================
+function showToast(msg, type='green') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  const colors = {green:'var(--green)',red:'var(--red)',orange:'var(--orange)',blue:'var(--accent)'};
+  t.style.borderRight = `4px solid ${colors[type]||colors.green}`;
+  t.innerHTML = `<span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(40px)'; t.style.transition='all 0.3s'; setTimeout(()=>t.remove(),300); }, 3200);
+}
+
+// ==================== CLOSE ON OVERLAY ====================
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); });
+});
+
+// ==================== START ====================
+init();
+</script>
+</body>
+</html>
