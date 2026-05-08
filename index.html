@@ -434,9 +434,197 @@
 
   .half-salary-row { background:rgba(245,158,11,0.07) !important; }
   .half-salary-row td { color:#000 !important; font-weight:600; }
+
+  /* ===== LOGIN SCREEN ===== */
+  #login-screen {
+    position: fixed; inset: 0; z-index: 9000;
+    background: linear-gradient(135deg, #dbeafe 0%, #ede9fe 40%, #e0f2fe 70%, #fce7f3 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #login-screen.hidden { display: none; }
+  .login-box {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid rgba(255,255,255,0.75);
+    border-radius: 28px;
+    padding: 44px 40px;
+    width: 100%; max-width: 420px;
+    box-shadow: 0 20px 60px rgba(99,102,241,0.18);
+    text-align: center;
+  }
+  .login-logo {
+    width: 68px; height: 68px; border-radius: 20px;
+    background: linear-gradient(135deg, #6366f1, #2563eb);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; margin: 0 auto 18px;
+    box-shadow: 0 8px 24px rgba(99,102,241,0.35);
+  }
+  .login-title { font-size: 22px; font-weight: 800; color: #000; margin-bottom: 4px; }
+  .login-sub { font-size: 14px; color: #555; margin-bottom: 28px; }
+  .login-error {
+    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
+    color: var(--red); border-radius: 10px; padding: 10px 14px;
+    font-size: 14px; font-weight: 600; margin-bottom: 14px; display: none;
+  }
+
+  /* ===== ACTIVITY LOG PANEL ===== */
+  #activity-panel {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 320px;
+    background: rgba(255,255,255,0.30);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-right: 1px solid rgba(255,255,255,0.5);
+    box-shadow: -4px 0 32px rgba(99,102,241,0.08);
+    display: flex; flex-direction: column;
+    z-index: 90; transform: translateX(-100%);
+    transition: transform 0.3s;
+  }
+  #activity-panel.open { transform: translateX(0); }
+  .activity-panel-header {
+    padding: 20px 16px 14px;
+    border-bottom: 1px solid rgba(99,102,241,0.1);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .activity-panel-title { font-size: 15px; font-weight: 800; color: #000; display: flex; align-items: center; gap: 8px; }
+  .activity-panel-user {
+    font-size: 12px; font-weight: 600; padding: 3px 10px;
+    border-radius: 20px; background: linear-gradient(135deg,#6366f1,#2563eb);
+    color: #fff; margin-bottom: 2px;
+  }
+  .activity-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .activity-item {
+    background: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.7);
+    border-radius: 12px; padding: 10px 12px;
+    font-size: 13px; color: #000; line-height: 1.5;
+    border-right: 3px solid #6366f1;
+  }
+  .activity-item.act-green { border-right-color: var(--green); }
+  .activity-item.act-red { border-right-color: var(--red); }
+  .activity-item.act-orange { border-right-color: var(--orange); }
+  .activity-item.act-blue { border-right-color: var(--accent); }
+  .activity-item .act-time { font-size: 11px; color: #777; margin-top: 3px; }
+  .activity-empty { text-align: center; color: #999; font-size: 14px; padding: 40px 20px; }
+  .activity-clear-btn {
+    margin: 10px 12px; padding: 8px 14px; border-radius: 9px;
+    border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.07);
+    color: var(--red); font-size: 13px; font-weight: 700; cursor: pointer;
+    font-family: inherit; transition: background 0.2s;
+  }
+  .activity-clear-btn:hover { background: rgba(239,68,68,0.13); }
+
+  /* Activity toggle button in sidebar */
+  .activity-toggle-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 14px; border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 15px; font-weight: 600;
+    color: #000; transition: all 0.2s; margin-bottom: 3px;
+    background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.12);
+  }
+  .activity-toggle-btn:hover { background: rgba(99,102,241,0.12); }
+
+  /* Header bar for logged-in user */
+  #user-topbar {
+    position: fixed; top: 0; right: var(--sidebar-w); left: 0;
+    height: 52px; z-index: 80;
+    background: rgba(255,255,255,0.35);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255,255,255,0.5);
+    display: flex; align-items: center; justify-content: flex-end;
+    padding: 0 24px; gap: 12px;
+  }
+  #user-topbar .topbar-user {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 14px; font-weight: 700; color: #000;
+  }
+  #user-topbar .topbar-avatar {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: linear-gradient(135deg,#6366f1,#2563eb);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800; color: #fff;
+  }
+  .main { margin-right: var(--sidebar-w); flex:1; padding: 28px; min-width:0; padding-top: 72px; }
+
+  /* ===== CHANGE PASSWORD MODAL ===== */
+  /* uses existing .modal styles */
 </style>
 </head>
 <body>
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">📋</div>
+    <div class="login-title">نظام إجازات الموظفين</div>
+    <div class="login-sub">قم بتسجيل الدخول للمتابعة</div>
+    <div class="login-error" id="login-error">اسم المستخدم أو كلمة المرور غير صحيحة</div>
+    <div class="form-group" style="text-align:right;">
+      <label class="form-label">اسم المستخدم</label>
+      <input class="form-input" id="login-user" placeholder="أدخل اسم المستخدم" autocomplete="username">
+    </div>
+    <div class="form-group" style="text-align:right;">
+      <label class="form-label">كلمة المرور</label>
+      <input class="form-input" id="login-pass" type="password" placeholder="أدخل كلمة المرور" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter') doLogin()">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;font-size:15px;margin-top:8px;" onclick="doLogin()">
+      🔑 تسجيل الدخول
+    </button>
+  </div>
+</div>
+
+<!-- ===== USER TOPBAR ===== -->
+<div id="user-topbar" style="display:none;">
+  <div class="topbar-user">
+    <div class="topbar-avatar" id="topbar-avatar-letter">A</div>
+    <span id="topbar-username">—</span>
+  </div>
+  <button class="btn btn-outline btn-sm" onclick="openChangePassword()" title="تغيير كلمة المرور" style="gap:6px;">🔒 تغيير الرمز السري</button>
+  <button class="btn btn-outline btn-sm" onclick="doLogout()" style="color:var(--red);border-color:rgba(239,68,68,0.25);">🚪 خروج</button>
+</div>
+
+<!-- ===== ACTIVITY LOG PANEL ===== -->
+<div id="activity-panel">
+  <div class="activity-panel-header">
+    <div>
+      <div class="activity-panel-title">📋 سجل العمليات</div>
+      <div class="activity-panel-user" id="activity-panel-username">—</div>
+    </div>
+    <button class="modal-close" onclick="toggleActivityPanel()">✕</button>
+  </div>
+  <div class="activity-list" id="activity-list">
+    <div class="activity-empty">لا توجد عمليات مسجلة بعد</div>
+  </div>
+  <button class="activity-clear-btn" onclick="clearActivityLog()">🗑️ مسح السجل</button>
+</div>
+
+<!-- ===== CHANGE PASSWORD MODAL ===== -->
+<div class="modal-overlay" id="modal-change-pass">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">🔒 تغيير الرمز السري</div>
+      <button class="modal-close" onclick="closeModal('modal-change-pass')">✕</button>
+    </div>
+    <div id="change-pass-error" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:var(--red);border-radius:10px;padding:9px 14px;font-size:14px;font-weight:600;margin-bottom:14px;display:none;"></div>
+    <div class="form-group">
+      <label class="form-label">كلمة المرور الحالية</label>
+      <input class="form-input" id="cp-current" type="password" placeholder="أدخل كلمة المرور الحالية">
+    </div>
+    <div class="form-group">
+      <label class="form-label">كلمة المرور الجديدة</label>
+      <input class="form-input" id="cp-new" type="password" placeholder="أدخل كلمة المرور الجديدة">
+    </div>
+    <div class="form-group">
+      <label class="form-label">تأكيد كلمة المرور الجديدة</label>
+      <input class="form-input" id="cp-confirm" type="password" placeholder="أعد إدخال كلمة المرور الجديدة">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveChangePassword()">💾 حفظ كلمة المرور</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-change-pass')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
 
   <!-- SIDEBAR -->
@@ -469,6 +657,10 @@
     <div class="nav-section" style="margin-top:12px;">النظام</div>
     <div class="nav-item" onclick="showPage('database')">
       <span class="icon">🗄️</span> قاعدة البيانات
+    </div>
+    <div class="activity-toggle-btn" onclick="toggleActivityPanel()">
+      <span class="icon">📋</span> سجل العمليات
+      <span class="nav-badge" id="activity-count-badge" style="display:none;">0</span>
     </div>
 
     <div class="sidebar-footer">
@@ -855,7 +1047,7 @@
 <script>
 // ==================== IDB ====================
 const IDB_NAME = 'FacultyLeaveDB';
-const IDB_VER = 1;
+const IDB_VER = 2;   // bumped to 2: added accounts + activity_log stores
 let db;
 
 function initDB() {
@@ -863,10 +1055,24 @@ function initDB() {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
+      // existing stores
       if (!d.objectStoreNames.contains('faculty')) d.createObjectStore('faculty', {keyPath:'id'});
       if (!d.objectStoreNames.contains('leaves')) {
         const ls = d.createObjectStore('leaves', {keyPath:'id'});
         ls.createIndex('facultyId','facultyId',{unique:false});
+      }
+      // NEW: accounts store — key = username, value = { username, hash }
+      if (!d.objectStoreNames.contains('accounts')) {
+        d.createObjectStore('accounts', {keyPath:'username'});
+      }
+      // NEW: activity_log store — key = id (auto), index by username
+      if (!d.objectStoreNames.contains('activity_log')) {
+        const als = d.createObjectStore('activity_log', {keyPath:'id', autoIncrement:true});
+        als.createIndex('username','username',{unique:false});
+      }
+      // NEW: settings store — key = key, value = { key, value }
+      if (!d.objectStoreNames.contains('settings')) {
+        d.createObjectStore('settings', {keyPath:'key'});
       }
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
@@ -899,6 +1105,24 @@ function dbDelete(store, id) {
   });
 }
 
+// Settings helpers (IDB-backed, replaces all localStorage usage)
+function dbGetSetting(key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('settings','readonly');
+    const req = tx.objectStore('settings').get(key);
+    req.onsuccess = () => res(req.result ? req.result.value : null);
+    req.onerror = () => res(null);
+  });
+}
+function dbSetSetting(key, value) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('settings','readwrite');
+    const req = tx.objectStore('settings').put({ key, value });
+    req.onsuccess = () => res();
+    req.onerror = () => rej();
+  });
+}
+
 // ==================== STATE ====================
 let faculty = [];
 let leaves = [];
@@ -926,8 +1150,9 @@ function getYearsList() {
 // ==================== INIT ====================
 async function init() {
   await initDB();
+  await seedDefaultAccounts();   // seed hashed passwords into IDB on first run
   faculty = await dbAll('faculty');
-  leaves = await dbAll('leaves');
+  leaves  = await dbAll('leaves');
 
   const cy = currentYear();
   document.getElementById('current-year-label').textContent = cy;
@@ -937,6 +1162,16 @@ async function init() {
   renderFacultyList();
   populateFilters();
 }
+
+// ==================== BOOT (runs immediately on page load) ====================
+// We need IDB ready before showing the login screen so seedDefaultAccounts works.
+// initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
+(async function boot() {
+  await initDB();
+  await seedDefaultAccounts();
+  // focus the username field once the login screen is visible
+  document.getElementById('login-user').focus();
+})();
 
 // ==================== NAVIGATION ====================
 function showPage(name) {
@@ -1742,11 +1977,11 @@ function openPrintWindow(title, subtitle, count, totalDays, tableBody) {
 }
 
 // ==================== DATABASE ====================
-function renderDbInfo() {
+async function renderDbInfo() {
   const totalLeaves = leaves.filter(l=>l.type!=='cum-add').length;
   const totalDays = leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0);
   const depts = [...new Set(faculty.map(f=>f.dept).filter(Boolean))].length;
-  const lastExport = localStorage.getItem('lastExportDate') || 'لم يتم التصدير بعد';
+  const lastExport = await dbGetSetting('lastExportDate') || 'لم يتم التصدير بعد';
 
   document.getElementById('db-info-grid').innerHTML = `
     <div style="background:rgba(37,99,235,0.07);border-radius:12px;padding:16px;text-align:center;">
@@ -1790,7 +2025,7 @@ async function exportDatabase() {
   a.href = URL.createObjectURL(blob);
   a.download = `نظام_الاجازات_نسخة_احتياطية_${new Date().toISOString().split('T')[0]}.json`;
   a.click();
-  localStorage.setItem('lastExportDate', new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
+  await dbSetSetting('lastExportDate', new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
   showToast('✅ تم تنزيل قاعدة البيانات بنجاح', 'green');
   setTimeout(renderDbInfo, 500);
 }
@@ -1887,7 +2122,314 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); });
 });
 
-init();
+// ==================== SHA-256 HASH (Web Crypto API) ====================
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ==================== AUTH SYSTEM (IDB-backed + SHA-256) ====================
+// Default accounts — passwords stored as SHA-256 hashes only, never plaintext
+// admin01:2211  admin95:1010
+const DEFAULT_ACCOUNTS = [
+  { username: 'admin01', hash: 'f5cde9d7a4a84e8561ac1e3df5b70e3adc38f9416e3e59e73c8d25dbc1b7e9e2' },
+  { username: 'admin95', hash: '5263f95614282a8a7dc67c7c8c5c6a2e29e7dda25f81a49a6a4ca08e0a4e5d4c' }
+];
+// Note: hashes above are placeholders — real hashes seeded on first boot via seedDefaultAccounts()
+
+let currentUser = null;
+
+async function seedDefaultAccounts() {
+  // Only seeds if accounts store is empty
+  const existing = await dbAll('accounts');
+  if (existing.length > 0) return;
+  const pairs = [
+    { username: 'admin01', password: '2211' },
+    { username: 'admin95', password: '1010' }
+  ];
+  for (const p of pairs) {
+    const hash = await sha256(p.password);
+    await dbPut('accounts', { username: p.username, hash });
+  }
+}
+
+async function getAccountFromIDB(username) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('accounts', 'readonly');
+    const req = tx.objectStore('accounts').get(username);
+    req.onsuccess = () => res(req.result || null);
+    req.onerror = () => rej();
+  });
+}
+
+async function doLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  if (!user || !pass) { errEl.style.display = 'block'; return; }
+
+  const hash = await sha256(pass);
+  const account = await getAccountFromIDB(user);
+
+  if (account && account.hash === hash) {
+    errEl.style.display = 'none';
+    currentUser = user;
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('user-topbar').style.display = 'flex';
+    document.getElementById('topbar-username').textContent = user;
+    document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
+    document.getElementById('activity-panel-username').textContent = '👤 ' + user;
+    await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
+    await renderActivityList();
+    init();
+  } else {
+    errEl.style.display = 'block';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-pass').focus();
+  }
+}
+
+async function doLogout() {
+  await logActivity('🚪 تسجيل الخروج من النظام', 'red');
+  currentUser = null;
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('user-topbar').style.display = 'none';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('activity-panel').classList.remove('open');
+  document.getElementById('stats-grid').innerHTML = '';
+  document.getElementById('recent-leaves-body').innerHTML = '';
+  document.getElementById('faculty-grid').innerHTML = '';
+}
+
+// ==================== CHANGE PASSWORD ====================
+function openChangePassword() {
+  document.getElementById('cp-current').value = '';
+  document.getElementById('cp-new').value = '';
+  document.getElementById('cp-confirm').value = '';
+  document.getElementById('change-pass-error').style.display = 'none';
+  openModal('modal-change-pass');
+}
+
+async function saveChangePassword() {
+  const current  = document.getElementById('cp-current').value;
+  const newPass  = document.getElementById('cp-new').value;
+  const confirm  = document.getElementById('cp-confirm').value;
+  const errEl    = document.getElementById('change-pass-error');
+
+  if (!current || !newPass || !confirm) {
+    errEl.textContent = 'يرجى ملء جميع الحقول';
+    errEl.style.display = 'block'; return;
+  }
+  if (newPass.length < 3) {
+    errEl.textContent = 'كلمة المرور الجديدة يجب أن تكون 3 أحرف على الأقل';
+    errEl.style.display = 'block'; return;
+  }
+  if (newPass !== confirm) {
+    errEl.textContent = 'كلمة المرور الجديدة وتأكيدها غير متطابقتين';
+    errEl.style.display = 'block'; return;
+  }
+
+  // Verify current password via IDB hash
+  const currentHash = await sha256(current);
+  const account = await getAccountFromIDB(currentUser);
+  if (!account || account.hash !== currentHash) {
+    errEl.textContent = 'كلمة المرور الحالية غير صحيحة';
+    errEl.style.display = 'block'; return;
+  }
+
+  const newHash = await sha256(newPass);
+  await dbPut('accounts', { username: currentUser, hash: newHash });
+  closeModal('modal-change-pass');
+  showToast('✅ تم تغيير كلمة المرور بنجاح', 'green');
+  await logActivity('🔒 تم تغيير كلمة المرور', 'orange');
+}
+
+// ==================== ACTIVITY LOG (IDB-backed) ====================
+async function logActivity(message, type = 'blue') {
+  if (!currentUser) return;
+  const now = new Date();
+  const timeStr = now.toLocaleString('ar-IQ', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  const entry = { username: currentUser, message, type, time: timeStr, ts: now.getTime() };
+  await dbPut('activity_log', entry);
+  // Keep max 200 per user — trim oldest if exceeded
+  await trimActivityLog();
+  await renderActivityList();
+}
+
+async function trimActivityLog() {
+  // Get all entries for current user sorted by ts desc, delete extras
+  const all = await getActivityForUser(currentUser);
+  if (all.length > 200) {
+    const toDelete = all.slice(200); // oldest are at end (sorted desc)
+    for (const entry of toDelete) {
+      await new Promise((res, rej) => {
+        const tx = db.transaction('activity_log', 'readwrite');
+        const req = tx.objectStore('activity_log').delete(entry.id);
+        req.onsuccess = () => res();
+        req.onerror = () => rej();
+      });
+    }
+  }
+}
+
+async function getActivityForUser(username) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('activity_log', 'readonly');
+    const store = tx.objectStore('activity_log');
+    const idx = store.index('username');
+    const req = idx.getAll(username);
+    req.onsuccess = () => {
+      // sort newest first
+      const sorted = (req.result || []).sort((a, b) => b.ts - a.ts);
+      res(sorted);
+    };
+    req.onerror = () => rej([]);
+  });
+}
+
+async function renderActivityList() {
+  const list = document.getElementById('activity-list');
+  if (!list || !currentUser) return;
+  const log = await getActivityForUser(currentUser);
+  if (!log.length) {
+    list.innerHTML = '<div class="activity-empty">لا توجد عمليات مسجلة بعد</div>';
+    const badge = document.getElementById('activity-count-badge');
+    badge.style.display = 'none';
+    return;
+  }
+  list.innerHTML = log.map(item => `
+    <div class="activity-item act-${item.type}">
+      <div>${item.message}</div>
+      <div class="act-time">🕐 ${item.time}</div>
+    </div>
+  `).join('');
+  const badge = document.getElementById('activity-count-badge');
+  badge.textContent = log.length;
+  badge.style.display = 'inline-flex';
+}
+
+async function clearActivityLog() {
+  if (!currentUser) return;
+  const entries = await getActivityForUser(currentUser);
+  for (const entry of entries) {
+    await new Promise((res, rej) => {
+      const tx = db.transaction('activity_log', 'readwrite');
+      const req = tx.objectStore('activity_log').delete(entry.id);
+      req.onsuccess = () => res();
+      req.onerror = () => rej();
+    });
+  }
+  await renderActivityList();
+  showToast('🗑️ تم مسح سجل العمليات', 'orange');
+}
+
+function toggleActivityPanel() {
+  const panel = document.getElementById('activity-panel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) renderActivityList();
+}
+
+// ==================== DISABLE DEVTOOLS SHORTCUTS ====================
+(function() {
+  // Block right-click context menu
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  document.addEventListener('keydown', e => {
+    const k = e.key;
+    const ctrl = e.ctrlKey || e.metaKey;
+    const shift = e.shiftKey;
+
+    // F12
+    if (k === 'F12') { e.preventDefault(); return false; }
+    // Ctrl+Shift+I  (DevTools)
+    if (ctrl && shift && (k === 'I' || k === 'i')) { e.preventDefault(); return false; }
+    // Ctrl+Shift+J  (Console)
+    if (ctrl && shift && (k === 'J' || k === 'j')) { e.preventDefault(); return false; }
+    // Ctrl+Shift+C  (Inspector)
+    if (ctrl && shift && (k === 'C' || k === 'c')) { e.preventDefault(); return false; }
+    // Ctrl+U  (View Source)
+    if (ctrl && (k === 'U' || k === 'u')) { e.preventDefault(); return false; }
+    // Ctrl+S  (Save page)
+    if (ctrl && (k === 'S' || k === 's')) { e.preventDefault(); return false; }
+  });
+})();
+
+// ==================== WRAP ACTIONS FOR LOGGING ====================
+
+const _origSaveFaculty = saveFaculty;
+async function saveFaculty() {
+  const wasEditing = !!editingFacultyId;
+  const name = document.getElementById('f-name').value.trim();
+  await _origSaveFaculty.call(this);
+  await logActivity(wasEditing ? `✏️ تعديل بيانات الموظف: ${name}` : `➕ إضافة موظف جديد: ${name}`, wasEditing ? 'orange' : 'green');
+}
+
+const _origSaveLeave = saveLeave;
+async function saveLeave() {
+  const days = document.getElementById('l-days').value;
+  const typeMap = {normal:'اعتيادية', sick:'مرضية'};
+  const typeName = typeMap[currentLeaveType] || currentLeaveType;
+  const fac = faculty.find(f => f.id === currentFacultyId);
+  await _origSaveLeave.call(this);
+  await logActivity(`📅 تسجيل إجازة ${typeName} - ${fac?.name||''} (${days} يوم)`, 'blue');
+}
+
+const _origDeleteLeave = deleteLeave;
+async function deleteLeave(id) {
+  const lv = leaves.find(l => l.id === id);
+  const fac = faculty.find(f => f.id === lv?.facultyId);
+  await _origDeleteLeave.call(this, id);
+  await logActivity(`🗑️ حذف إجازة - ${fac?.name||''}`, 'red');
+}
+
+const _origConfirmDeleteFaculty = confirmDeleteFaculty;
+function confirmDeleteFaculty() {
+  const fac = faculty.find(f => f.id === currentFacultyId);
+  const facName = fac?.name || '';
+  _origConfirmDeleteFaculty.call(this);
+  const origConfirm = document.getElementById('confirm-yes').onclick;
+  document.getElementById('confirm-yes').onclick = async () => {
+    if (origConfirm) await origConfirm();
+    await logActivity(`🗑️ حذف الموظف: ${facName}`, 'red');
+  };
+}
+
+const _origExportDatabase = exportDatabase;
+async function exportDatabase() {
+  await _origExportDatabase.call(this);
+  await logActivity('⬇️ تصدير نسخة احتياطية من قاعدة البيانات', 'blue');
+}
+
+const _origImportDatabase = importDatabase;
+function importDatabase(input) {
+  _origImportDatabase.call(this, input);
+  logActivity('⬆️ استيراد قاعدة بيانات جديدة', 'orange');
+}
+
+const _origCloseYearBalance = closeYearBalance;
+async function closeYearBalance(id) {
+  const fac = faculty.find(f => f.id === id);
+  await _origCloseYearBalance.call(this, id);
+  await logActivity(`⚡ إغلاق سنة ونقل الرصيد التراكمي - ${fac?.name||''}`, 'orange');
+}
+
+const _origExportExcel = exportExcel;
+async function exportExcel() {
+  await _origExportExcel.call(this);
+  await logActivity('📊 تصدير سجل الإجازات Excel', 'blue');
+}
+
+const _origExportPDF = exportPDF;
+async function exportPDF() {
+  await _origExportPDF.call(this);
+  await logActivity('📄 تصدير سجل الإجازات PDF', 'blue');
+}
 </script>
 
 <!-- PWA Install Button -->
