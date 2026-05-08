@@ -1398,11 +1398,13 @@ async function closeYearBalance(id) {
   const cy = currentYear();
   const bal = getBalance(id, cy);
   if (bal.normal <= 0) { showToast('⚠️ لا يوجد رصيد اعتيادي متبقي لنقله', 'orange'); return; }
+  const fac = faculty.find(f => f.id === id);
   showConfirm(`هل تريد نقل ${bal.normal} يوم متبقية من الإجازات الاعتيادية لسنة ${cy} إلى الرصيد التراكمي؟`, async () => {
     await addLeaveRecord({ facultyId: id, type: 'cum-add', days: bal.normal, fromDate: cy+'-end', toDate: cy+'-end', year: cy, notes: `نقل رصيد نهاية السنة ${cy}` });
     await renderProfile(id);
     renderFacultyList();
     showToast(`✅ تم نقل ${bal.normal} يوم إلى الرصيد التراكمي`, 'green');
+    await logActivity(`⚡ إغلاق سنة ونقل ${bal.normal} يوم تراكمي - ${fac?.name||''}`, 'orange');
   });
 }
 
@@ -1429,6 +1431,7 @@ function openEditFaculty() {
   openModal('modal-faculty');
 }
 async function saveFaculty() {
+  const wasEditing = !!editingFacultyId;
   const name = document.getElementById('f-name').value.trim();
   const dept = document.getElementById('f-dept').value.trim();
   if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
@@ -1446,15 +1449,17 @@ async function saveFaculty() {
   renderFacultyList();
   populateFilters();
   renderDashboard();
-  showToast(editingFacultyId ? '✅ تم تحديث بيانات الموظف' : '✅ تم إضافة الموظف بنجاح', 'green');
-  if (editingFacultyId && currentFacultyId === editingFacultyId) {
+  showToast(wasEditing ? '✅ تم تحديث بيانات الموظف' : '✅ تم إضافة الموظف بنجاح', 'green');
+  if (wasEditing && currentFacultyId === editingFacultyId) {
     document.getElementById('profile-name-header').textContent = obj.name;
     renderProfile(obj.id);
   }
+  await logActivity(wasEditing ? `✏️ تعديل بيانات الموظف: ${name}` : `➕ إضافة موظف جديد: ${name}`, wasEditing ? 'orange' : 'green');
 }
 function confirmDeleteFaculty() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
-  showConfirm(`هل أنت متأكد من حذف الموظف "${fac?.name}" وجميع سجلات إجازاته؟`, async () => {
+  const facName = fac?.name || '';
+  showConfirm(`هل أنت متأكد من حذف الموظف "${facName}" وجميع سجلات إجازاته؟`, async () => {
     await dbDelete('faculty', currentFacultyId);
     const fLeaves = leaves.filter(l=>l.facultyId===currentFacultyId);
     for (const l of fLeaves) await dbDelete('leaves', l.id);
@@ -1465,6 +1470,7 @@ function confirmDeleteFaculty() {
     renderDashboard();
     populateFilters();
     showToast('🗑️ تم حذف الموظف', 'red');
+    await logActivity(`🗑️ حذف الموظف: ${facName}`, 'red');
   });
 }
 
@@ -1582,12 +1588,16 @@ async function saveLeave() {
   }
 }
 
-function afterSaveLeave(showSuccessToast=true) {
+async function afterSaveLeave(showSuccessToast=true) {
   closeModal('modal-leave');
   renderProfile(currentFacultyId);
   renderFacultyList();
   renderDashboard();
   if (showSuccessToast) showToast('✅ تم تسجيل الإجازة بنجاح', 'green');
+  const typeMap = {normal:'اعتيادية', sick:'مرضية', cumulative:'تراكمية', half:'مرضية - نصف راتب'};
+  const typeName = typeMap[currentLeaveType] || currentLeaveType;
+  const fac = faculty.find(f => f.id === currentFacultyId);
+  await logActivity(`📅 تسجيل إجازة ${typeName} - ${fac?.name||''}`, 'blue');
 }
 
 async function addLeaveRecord(data) {
@@ -1598,6 +1608,8 @@ async function addLeaveRecord(data) {
 }
 
 async function deleteLeave(id) {
+  const lv = leaves.find(l => l.id === id);
+  const fac = faculty.find(f => f.id === lv?.facultyId);
   showConfirm('هل تريد حذف هذه الإجازة؟', async () => {
     await dbDelete('leaves', id);
     leaves = await dbAll('leaves');
@@ -1605,6 +1617,7 @@ async function deleteLeave(id) {
     renderFacultyList();
     renderDashboard();
     showToast('🗑️ تم حذف الإجازة', 'red');
+    await logActivity(`🗑️ حذف إجازة - ${fac?.name||''}`, 'red');
   });
 }
 
@@ -1795,6 +1808,7 @@ function exportExcel() {
   const blob = new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
   const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='سجل_الإجازات.xls'; a.click();
   showToast('📊 تم تصدير ملف Excel بنجاح', 'green');
+  logActivity('📊 تصدير سجل الإجازات Excel', 'blue');
 }
 
 function exportStatsExcel() {
@@ -1899,6 +1913,7 @@ function exportPDF() {
     <td style="font-weight:900;color:#2563eb;font-size:18px;text-align:center;padding:10px 14px">${totalDays}</td>
     <td colspan="2"></td></tr></tfoot>`
   );
+  logActivity('📄 تصدير سجل الإجازات PDF', 'blue');
 }
 
 function exportStatsPDF() {
@@ -2027,6 +2042,7 @@ async function exportDatabase() {
   a.click();
   await dbSetSetting('lastExportDate', new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
   showToast('✅ تم تنزيل قاعدة البيانات بنجاح', 'green');
+  await logActivity('⬇️ تصدير نسخة احتياطية من قاعدة البيانات', 'blue');
   setTimeout(renderDbInfo, 500);
 }
 
@@ -2052,6 +2068,7 @@ async function importDatabase(input) {
           renderFacultyList();
           renderDbInfo();
           showToast(`✅ تم استيراد ${faculty.length} موظف و${leaves.length} سجل بنجاح`, 'green');
+          await logActivity(`⬆️ استيراد قاعدة بيانات: ${faculty.length} موظف`, 'orange');
         } catch(err) { showToast('❌ حدث خطأ أثناء الاستيراد', 'red'); }
       });
     } catch(err) { showToast('❌ تعذر قراءة الملف', 'red'); }
@@ -2359,77 +2376,6 @@ function toggleActivityPanel() {
     if (ctrl && (k === 'S' || k === 's')) { e.preventDefault(); return false; }
   });
 })();
-
-// ==================== WRAP ACTIONS FOR LOGGING ====================
-
-const _origSaveFaculty = saveFaculty;
-async function saveFaculty() {
-  const wasEditing = !!editingFacultyId;
-  const name = document.getElementById('f-name').value.trim();
-  await _origSaveFaculty.call(this);
-  await logActivity(wasEditing ? `✏️ تعديل بيانات الموظف: ${name}` : `➕ إضافة موظف جديد: ${name}`, wasEditing ? 'orange' : 'green');
-}
-
-const _origSaveLeave = saveLeave;
-async function saveLeave() {
-  const days = document.getElementById('l-days').value;
-  const typeMap = {normal:'اعتيادية', sick:'مرضية'};
-  const typeName = typeMap[currentLeaveType] || currentLeaveType;
-  const fac = faculty.find(f => f.id === currentFacultyId);
-  await _origSaveLeave.call(this);
-  await logActivity(`📅 تسجيل إجازة ${typeName} - ${fac?.name||''} (${days} يوم)`, 'blue');
-}
-
-const _origDeleteLeave = deleteLeave;
-async function deleteLeave(id) {
-  const lv = leaves.find(l => l.id === id);
-  const fac = faculty.find(f => f.id === lv?.facultyId);
-  await _origDeleteLeave.call(this, id);
-  await logActivity(`🗑️ حذف إجازة - ${fac?.name||''}`, 'red');
-}
-
-const _origConfirmDeleteFaculty = confirmDeleteFaculty;
-function confirmDeleteFaculty() {
-  const fac = faculty.find(f => f.id === currentFacultyId);
-  const facName = fac?.name || '';
-  _origConfirmDeleteFaculty.call(this);
-  const origConfirm = document.getElementById('confirm-yes').onclick;
-  document.getElementById('confirm-yes').onclick = async () => {
-    if (origConfirm) await origConfirm();
-    await logActivity(`🗑️ حذف الموظف: ${facName}`, 'red');
-  };
-}
-
-const _origExportDatabase = exportDatabase;
-async function exportDatabase() {
-  await _origExportDatabase.call(this);
-  await logActivity('⬇️ تصدير نسخة احتياطية من قاعدة البيانات', 'blue');
-}
-
-const _origImportDatabase = importDatabase;
-function importDatabase(input) {
-  _origImportDatabase.call(this, input);
-  logActivity('⬆️ استيراد قاعدة بيانات جديدة', 'orange');
-}
-
-const _origCloseYearBalance = closeYearBalance;
-async function closeYearBalance(id) {
-  const fac = faculty.find(f => f.id === id);
-  await _origCloseYearBalance.call(this, id);
-  await logActivity(`⚡ إغلاق سنة ونقل الرصيد التراكمي - ${fac?.name||''}`, 'orange');
-}
-
-const _origExportExcel = exportExcel;
-async function exportExcel() {
-  await _origExportExcel.call(this);
-  await logActivity('📊 تصدير سجل الإجازات Excel', 'blue');
-}
-
-const _origExportPDF = exportPDF;
-async function exportPDF() {
-  await _origExportPDF.call(this);
-  await logActivity('📄 تصدير سجل الإجازات PDF', 'blue');
-}
 </script>
 
 <!-- PWA Install Button -->
