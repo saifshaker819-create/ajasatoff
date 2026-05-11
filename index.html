@@ -681,7 +681,10 @@
           <div class="page-title">لوحة التحكم</div>
           <div class="page-subtitle" id="dash-date"></div>
         </div>
-        <button class="btn btn-primary" onclick="openAddFaculty()">➕ إضافة موظف</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="openAddFaculty('employee')">👨‍💼 إضافة موظف</button>
+          <button class="btn" style="background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="openAddFaculty('instructor')">🎓 إضافة تدريسي</button>
+        </div>
       </div>
 
       <div class="stats-grid" id="stats-grid"></div>
@@ -712,7 +715,10 @@
           <div class="page-title">الموظفون</div>
           <div class="page-subtitle">إدارة قائمة الموظفين وإجازاتهم</div>
         </div>
-        <button class="btn btn-primary" onclick="openAddFaculty()">➕ إضافة موظف</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="openAddFaculty('employee')">👨‍💼 إضافة موظف</button>
+          <button class="btn" style="background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="openAddFaculty('instructor')">🎓 إضافة تدريسي</button>
+        </div>
       </div>
 
       <div class="glass-card" style="margin-bottom:20px;">
@@ -746,7 +752,8 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="openLeaveTypeSelector()">📋 إجازة</button>
-          <button class="btn btn-outline" onclick="openEditFaculty()">✏️ تعديل</button>
+          <button class="btn btn-outline" onclick="openManualBalance()" title="تعديل الرصيد يدوياً">✏️ تعديل الرصيد</button>
+          <button class="btn btn-outline" onclick="openEditFaculty()">⚙️ تعديل البيانات</button>
           <button class="btn btn-outline" style="color:var(--red);" onclick="confirmDeleteFaculty()">🗑️ حذف</button>
         </div>
       </div>
@@ -779,6 +786,8 @@
               <option value="sick">مرضية</option>
               <option value="half">مرضية بنصف راتب</option>
               <option value="cumulative">تراكمية</option>
+              <option value="exception">استثناء</option>
+              <option value="study">دراسية</option>
               <option value="long">إجازة طويلة</option>
               <option value="fiveyear">إجازة 5 سنوات</option>
               <option value="prebirth">قبل الوضع</option>
@@ -950,6 +959,9 @@
       <div class="modal-title" id="faculty-modal-title">إضافة موظف</div>
       <button class="modal-close" onclick="closeModal('modal-faculty')">✕</button>
     </div>
+    <!-- Employee type badge (readonly display) -->
+    <div id="f-type-badge" style="margin-bottom:14px;padding:8px 14px;border-radius:10px;font-size:14px;font-weight:700;display:none;"></div>
+    <input type="hidden" id="f-type" value="employee">
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">الاسم الكامل *</label>
@@ -1090,6 +1102,123 @@
   </div>
 </div>
 
+<!-- Exception Leave Modal (instructor only) -->
+<div class="modal-overlay" id="modal-exception">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">⭐ استثناء - إضافة أيام اعتيادية</div>
+      <button class="modal-close" onclick="closeModal('modal-exception')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">تاريخ الاستثناء *</label>
+        <input class="form-input" id="exc-from" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">عدد الأيام المضافة *</label>
+        <input class="form-input" id="exc-days" type="number" min="1" placeholder="أدخل عدد الأيام">
+      </div>
+      <div class="form-group">
+        <label class="form-label">إلى تاريخ (اختياري)</label>
+        <input class="form-input" id="exc-to" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">السنة الدراسية</label>
+        <select class="form-select" id="exc-year"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ملاحظات</label>
+      <input class="form-input" id="exc-notes" placeholder="سبب الاستثناء (اختياري)">
+    </div>
+    <div id="exc-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(8,145,178,0.07);border:1px solid rgba(8,145,178,0.2);font-size:13px;color:#0891b2;margin-bottom:4px;display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn" style="background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="saveException()">💾 إضافة الأيام للرصيد</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-exception')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Study Leave Modal -->
+<div class="modal-overlay" id="modal-study-leave">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">📚 إجازة دراسية</div>
+      <button class="modal-close" onclick="closeModal('modal-study-leave')">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">تاريخ البداية *</label>
+        <input class="form-input" id="sl-from" type="date" oninput="calcStudyLeaveEnd()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">عدد الأيام *</label>
+        <input class="form-input" id="sl-days" type="number" min="1" placeholder="أدخل عدد الأيام" oninput="calcStudyLeaveEnd()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">تاريخ الانتهاء (محسوب)</label>
+        <input class="form-input" id="sl-to" type="date" readonly style="background:rgba(99,102,241,0.05);">
+      </div>
+      <div class="form-group">
+        <label class="form-label">السنة الدراسية</label>
+        <select class="form-select" id="sl-year"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ملاحظات</label>
+      <input class="form-input" id="sl-notes" placeholder="ملاحظات إضافية (اختياري)">
+    </div>
+    <div id="sl-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.12);font-size:13px;margin-bottom:4px;display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="saveStudyLeave()">💾 تسجيل الإجازة الدراسية</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-study-leave')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual Balance Edit Modal -->
+<div class="modal-overlay" id="modal-manual-balance">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">✏️ تعديل رصيد الإجازة يدوياً</div>
+      <button class="modal-close" onclick="closeModal('modal-manual-balance')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">نوع الإجازة</label>
+      <select class="form-select" id="mb-type" onchange="updateManualBalanceInfo()">
+        <option value="normal">اعتيادية</option>
+        <option value="sick">مرضية</option>
+        <option value="cumulative">تراكمية</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">العملية</label>
+      <select class="form-select" id="mb-op">
+        <option value="set">تحديد الرصيد بقيمة معينة</option>
+        <option value="add">إضافة أيام للرصيد</option>
+        <option value="subtract">خصم أيام من الرصيد</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">عدد الأيام *</label>
+      <input class="form-input" id="mb-days" type="number" min="0" placeholder="أدخل عدد الأيام">
+    </div>
+    <div class="form-group">
+      <label class="form-label">السنة الدراسية</label>
+      <select class="form-select" id="mb-year" onchange="updateManualBalanceInfo()"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ملاحظات</label>
+      <input class="form-input" id="mb-notes" placeholder="سبب التعديل">
+    </div>
+    <div id="mb-info" style="padding:10px 14px;border-radius:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);font-size:13px;margin-bottom:4px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveManualBalance()">💾 تطبيق التعديل</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-manual-balance')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
 <!-- Alert Modal (yes/no) -->
 <div class="modal-overlay" id="modal-alert">
   <div class="modal modal-sm">
@@ -1218,8 +1347,14 @@ let currentFacultyId = null;
 let currentLeaveType = 'normal';
 let alertCallback = null;
 
-const NORMAL_DAYS = 36;
+const NORMAL_DAYS = 36;       // موظف عادي
+const NORMAL_DAYS_INSTRUCTOR = 15; // تدريسي
 const SICK_DAYS = 30;
+
+function getNormalDays(facultyId) {
+  const fac = faculty.find(f=>f.id===facultyId);
+  return fac && fac.type === 'instructor' ? NORMAL_DAYS_INSTRUCTOR : NORMAL_DAYS;
+}
 
 function currentYear() {
   const now = new Date();
@@ -1312,19 +1447,23 @@ function renderDashboard() {
 
 function leaveTypeBadge(t) {
   const map = {
-    normal:'<span class="badge badge-blue">📅 اعتيادية</span>',
-    sick:'<span class="badge badge-red">🏥 مرضية</span>',
-    cumulative:'<span class="badge badge-purple">📦 تراكمية</span>',
-    half:'<span class="badge badge-orange">💰 مرضية - نصف راتب</span>',
-    long:'<span class="badge badge-gray" style="background:rgba(6,182,212,0.12);color:#0891b2;">🏖️ إجازة طويلة</span>',
-    fiveyear:'<span class="badge badge-gray" style="background:rgba(16,185,129,0.12);color:#059669;">🗓️ إجازة 5 سنوات</span>',
-    prebirth:'<span class="badge badge-gray" style="background:rgba(236,72,153,0.12);color:#db2777;">🤰 قبل الوضع</span>',
-    postbirth:'<span class="badge badge-gray" style="background:rgba(168,85,247,0.12);color:#9333ea;">👶 بعد الوضع</span>',
-    maternity:'<span class="badge badge-gray" style="background:rgba(245,158,11,0.12);color:#d97706;">🍼 إجازة أمومة</span>',
+    normal:        '<span class="badge badge-blue">📅 اعتيادية</span>',
+    sick:          '<span class="badge badge-red">🏥 مرضية</span>',
+    cumulative:    '<span class="badge badge-purple">📦 تراكمية</span>',
+    half:          '<span class="badge badge-orange">💰 مرضية - نصف راتب</span>',
+    exception:     '<span class="badge" style="background:rgba(245,158,11,0.12);color:#d97706;">⭐ استثناء</span>',
+    study:         '<span class="badge" style="background:rgba(99,102,241,0.12);color:#6366f1;">📚 دراسية</span>',
+    long:          '<span class="badge badge-gray" style="background:rgba(6,182,212,0.12);color:#0891b2;">🏖️ إجازة طويلة</span>',
+    fiveyear:      '<span class="badge badge-gray" style="background:rgba(16,185,129,0.12);color:#059669;">🗓️ إجازة 5 سنوات</span>',
+    prebirth:      '<span class="badge badge-gray" style="background:rgba(236,72,153,0.12);color:#db2777;">🤰 قبل الوضع</span>',
+    postbirth:     '<span class="badge badge-gray" style="background:rgba(168,85,247,0.12);color:#9333ea;">👶 بعد الوضع</span>',
+    maternity:     '<span class="badge badge-gray" style="background:rgba(245,158,11,0.12);color:#d97706;">🍼 إجازة أمومة</span>',
     'maternity-ext':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.12);color:#dc2626;">🍼+ تمديد أمومة</span>',
-    'long-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة طويلة</span>',
+    'long-cut':    '<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة طويلة</span>',
     'fiveyear-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة 5 سنوات</span>',
     'maternity-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة أمومة</span>',
+    'manual-sick-add':'<span class="badge badge-gray" style="background:rgba(16,185,129,0.1);color:#059669;">➕ إضافة مرضية (يدوي)</span>',
+    'manual-sick-sub':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.1);color:#dc2626;">➖ خصم مرضية (يدوي)</span>',
   };
   return map[t] || `<span class="badge badge-gray">${t}</span>`;
 }
@@ -1332,12 +1471,29 @@ function leaveTypeBadge(t) {
 // ==================== BALANCES ====================
 function getBalance(facultyId, year) {
   const fac = faculty.find(f=>f.id===facultyId);
-  if (!fac) return {normal:0, sick:0, normalUsed:0, sickUsed:0};
-  const fLeaves = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
-  const normalUsed = fLeaves.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
-  const normalRefund = fLeaves.filter(l=>l.type==='normal-refund').reduce((s,l)=>s+Math.abs(l.days),0);
-  const sickUsed = fLeaves.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
-  return { normal: NORMAL_DAYS - normalUsed + normalRefund, sick: SICK_DAYS - sickUsed, normalUsed: Math.max(0, normalUsed - normalRefund), sickUsed };
+  if (!fac) return {normal:0, sick:0, normalUsed:0, sickUsed:0, normalDays:NORMAL_DAYS};
+  const nd = getNormalDays(facultyId);
+  const fl = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
+
+  // Aعتيادية
+  const normalUsed    = fl.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
+  const normalRefund  = fl.filter(l=>l.type==='normal-refund').reduce((s,l)=>s+l.days,0);
+  const exceptionAdd  = fl.filter(l=>l.type==='exception').reduce((s,l)=>s+l.days,0);
+  // مرضية
+  const sickUsed      = fl.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
+  const sickManualAdd = fl.filter(l=>l.type==='manual-sick-add').reduce((s,l)=>s+l.days,0);
+  const sickManualSub = fl.filter(l=>l.type==='manual-sick-sub').reduce((s,l)=>s+l.days,0);
+
+  const normalBalance = nd + exceptionAdd - normalUsed + normalRefund;
+  const sickBalance   = SICK_DAYS + sickManualAdd - sickManualSub - sickUsed;
+
+  return {
+    normal:     normalBalance,
+    sick:       sickBalance,
+    normalUsed: Math.max(0, normalUsed - normalRefund),
+    sickUsed,
+    normalDays: nd + exceptionAdd,
+  };
 }
 
 function getCumBalance(facultyId) {
@@ -1377,7 +1533,7 @@ function renderFacultyList() {
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
           <div class="avatar">${f.name.charAt(0)}</div>
           <div>
-            <div style="font-size:16px;font-weight:800;color:#000">${f.name} ${f.gender==='female'?'<span style="font-size:13px;">👩</span>':f.gender==='male'?'<span style="font-size:13px;">👨</span>':''}</div>
+            <div style="font-size:16px;font-weight:800;color:#000">${f.name} ${f.gender==='female'?'<span style="font-size:13px;">👩</span>':f.gender==='male'?'<span style="font-size:13px;">👨</span>':''} ${f.type==='instructor'?'<span style="font-size:11px;background:rgba(8,145,178,0.12);color:#0891b2;padding:2px 7px;border-radius:8px;">🎓</span>':''}</div>
             <div style="font-size:15px;color:#000;margin-top:2px;">${f.dept||'—'} ${f.rank?'• '+f.rank:''}</div>
           </div>
         </div>
@@ -1429,7 +1585,10 @@ function renderProfile(id) {
   const pctN = Math.min(100,Math.round(bal.normalUsed/NORMAL_DAYS*100));
   const pctS = Math.min(100,Math.round(bal.sickUsed/SICK_DAYS*100));
   const isFemale = fac.gender === 'female';
+  const isInstructor = fac.type === 'instructor';
+  const normalDaysTotal = getNormalDays(id);
   const genderBadge = fac.gender ? `<span class="badge ${isFemale?'badge-red':'badge-blue'}" style="margin-top:4px;">${isFemale?'👩 أنثى':'👨 ذكر'}</span>` : '';
+  const typeBadge = isInstructor ? `<span class="badge" style="background:rgba(8,145,178,0.12);color:#0891b2;margin-top:4px;">🎓 تدريسي</span>` : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;margin-top:4px;">👨‍💼 موظف</span>`;
 
   // Active extended leaves
   const extTypes = ['long','fiveyear','prebirth','postbirth','maternity','maternity-ext'];
@@ -1445,7 +1604,7 @@ function renderProfile(id) {
     const elapsed = Math.max(0, Math.round((today - fromD) / 86400000));
     const remaining = Math.max(0, Math.round((toD - today) / 86400000));
     const pct = Math.min(100, Math.round(elapsed / lv.days * 100));
-    const canCut = ['long','fiveyear','maternity','maternity-ext'].includes(lv.type);
+    const canCut = ['long','fiveyear','maternity','maternity-ext','study'].includes(lv.type);
     extBlocks += `
     <div class="leave-block" style="background:linear-gradient(135deg,${cfg.color}15,${cfg.color}08);border:1px solid ${cfg.color}30;">
       <div class="leave-block-title" style="color:${cfg.color};">${cfg.icon} ${cfg.label} <span style="font-size:12px;background:${cfg.color}20;color:${cfg.color};padding:2px 8px;border-radius:10px;font-weight:700;">نشطة</span></div>
@@ -1466,6 +1625,7 @@ function renderProfile(id) {
           <span class="badge badge-blue">📅 السنة: ${cy}</span>
           ${fac.empNo?`<span class="badge badge-gray">🆔 ${fac.empNo}</span>`:''}
           ${genderBadge}
+          ${typeBadge}
         </div>
       </div>
     </div>
@@ -1480,7 +1640,7 @@ function renderProfile(id) {
       <div class="leave-block">
         <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
         <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
-        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${NORMAL_DAYS} يوم</div>
+        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
       </div>
       <div class="leave-block">
@@ -1542,19 +1702,31 @@ async function closeYearBalance(id) {
 
 // ==================== ADD FACULTY ====================
 let editingFacultyId = null;
-function openAddFaculty() {
+function openAddFaculty(type) {
   editingFacultyId = null;
-  document.getElementById('faculty-modal-title').textContent = 'إضافة موظف جديد';
+  const isInstructor = type === 'instructor';
+  document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 إضافة تدريسي جديد' : '👨‍💼 إضافة موظف جديد';
   ['f-name','f-dept','f-empno','f-hire','f-rank'].forEach(id => document.getElementById(id).value='');
   document.getElementById('f-cumulative').value='0';
   document.getElementById('f-gender').value='';
+  document.getElementById('f-type').value = type || 'employee';
+  const badge = document.getElementById('f-type-badge');
+  badge.style.display='block';
+  if (isInstructor) {
+    badge.style.background='rgba(8,145,178,0.1)'; badge.style.color='#0891b2'; badge.style.border='1px solid rgba(8,145,178,0.2)';
+    badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
+  } else {
+    badge.style.background='rgba(99,102,241,0.08)'; badge.style.color='#6366f1'; badge.style.border='1px solid rgba(99,102,241,0.18)';
+    badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
+  }
   openModal('modal-faculty');
 }
 function openEditFaculty() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
   if (!fac) return;
   editingFacultyId = fac.id;
-  document.getElementById('faculty-modal-title').textContent = 'تعديل بيانات الموظف';
+  const isInstructor = fac.type === 'instructor';
+  document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 تعديل بيانات التدريسي' : '👨‍💼 تعديل بيانات الموظف';
   document.getElementById('f-name').value = fac.name||'';
   document.getElementById('f-dept').value = fac.dept||'';
   document.getElementById('f-empno').value = fac.empNo||'';
@@ -1562,6 +1734,16 @@ function openEditFaculty() {
   document.getElementById('f-rank').value = fac.rank||'';
   document.getElementById('f-cumulative').value = fac.initialCumulative||0;
   document.getElementById('f-gender').value = fac.gender||'';
+  document.getElementById('f-type').value = fac.type||'employee';
+  const badge = document.getElementById('f-type-badge');
+  badge.style.display='block';
+  if (isInstructor) {
+    badge.style.background='rgba(8,145,178,0.1)'; badge.style.color='#0891b2'; badge.style.border='1px solid rgba(8,145,178,0.2)';
+    badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
+  } else {
+    badge.style.background='rgba(99,102,241,0.08)'; badge.style.color='#6366f1'; badge.style.border='1px solid rgba(99,102,241,0.18)';
+    badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
+  }
   openModal('modal-faculty');
 }
 async function saveFaculty() {
@@ -1569,11 +1751,12 @@ async function saveFaculty() {
   const name = document.getElementById('f-name').value.trim();
   const dept = document.getElementById('f-dept').value.trim();
   const gender = document.getElementById('f-gender').value;
+  const type = document.getElementById('f-type').value || 'employee';
   if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
   if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
   const obj = {
     id: editingFacultyId || Date.now().toString(),
-    name, dept, gender,
+    name, dept, gender, type,
     empNo: document.getElementById('f-empno').value.trim(),
     rank: document.getElementById('f-rank').value.trim(),
     hireYear: document.getElementById('f-hire').value,
@@ -1585,12 +1768,14 @@ async function saveFaculty() {
   renderFacultyList();
   populateFilters();
   renderDashboard();
-  showToast(wasEditing ? '✅ تم تحديث بيانات الموظف' : '✅ تم إضافة الموظف بنجاح', 'green');
+  const typeLabel = type==='instructor'?'التدريسي':'الموظف';
+  showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
   if (wasEditing && currentFacultyId === editingFacultyId) {
     document.getElementById('profile-name-header').textContent = obj.name;
     renderProfile(obj.id);
   }
-  await logActivity(wasEditing ? `✏️ تعديل بيانات الموظف: ${name}` : `➕ إضافة موظف جديد: ${name} (${gender==='female'?'أنثى':'ذكر'})`, wasEditing ? 'orange' : 'green');
+  const genderLabel = gender==='female'?'أنثى':'ذكر';
+  await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
 }
 function confirmDeleteFaculty() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
@@ -1773,6 +1958,8 @@ function renderLeavesLog() {
     if (toF && l.fromDate > toF) return false;
     if (l.type === 'cum-add') return false;
     if (l.type === 'normal-refund') return false;
+    if (l.type === 'manual-sick-add') return false;
+    if (l.type === 'manual-sick-sub') return false;
     if (l.autoDeduct) return false;
     return true;
   }).sort((a,b) => b.id.localeCompare(a.id));
@@ -1886,10 +2073,27 @@ function exportExcel() {
   const yFilter = document.getElementById('log-year-filter')?.value||'';
   const fromF = document.getElementById('log-from-filter')?.value||'';
   const toF = document.getElementById('log-to-filter')?.value||'';
-  const typeMap = {normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية - نصف راتب'};
+  const typeMap = {
+    normal:          'اعتيادية',
+    sick:            'مرضية',
+    cumulative:      'تراكمية',
+    half:            'مرضية - نصف راتب',
+    exception:       'استثناء',
+    study:           'إجازة دراسية',
+    long:            'إجازة طويلة',
+    fiveyear:        'إجازة 5 سنوات',
+    prebirth:        'إجازة قبل الوضع',
+    postbirth:       'إجازة بعد الوضع',
+    maternity:       'إجازة أمومة',
+    'maternity-ext': 'تمديد إجازة أمومة',
+  };
 
   const filtered = leaves.filter(l=>{
     if (l.type==='cum-add') return false;
+    if (l.autoDeduct) return false;
+    if (l.type==='normal-refund') return false;
+    if (l.type==='manual-sick-add') return false;
+    if (l.type==='manual-sick-sub') return false;
     if (fFilter && l.facultyId!==fFilter) return false;
     if (tFilter && l.type!==tFilter) return false;
     if (yFilter && l.year!==yFilter) return false;
@@ -1900,9 +2104,19 @@ function exportExcel() {
 
   const rows = filtered.map((l,i)=>{
     const f = faculty.find(x=>x.id===l.facultyId);
-    const typeName = typeMap[l.type]||l.type;
-    const rowColor = l.type==='half'?'#fff8ed': l.type==='sick'?'#fff5f5': l.type==='cumulative'?'#f5f3ff':'#f0fff9';
-    const typeColor = l.type==='half'?'#d97706': l.type==='sick'?'#dc2626': l.type==='cumulative'?'#7c3aed':'#059669';
+    const typeName  = typeMap[l.type] || l.type;
+    const typeColors = {
+      normal:'#059669', sick:'#dc2626', half:'#d97706', cumulative:'#7c3aed',
+      exception:'#d97706', study:'#6366f1', long:'#0891b2', fiveyear:'#059669',
+      prebirth:'#db2777', postbirth:'#9333ea', maternity:'#d97706', 'maternity-ext':'#dc2626',
+    };
+    const typeBgs = {
+      normal:'#dcfce7', sick:'#fee2e2', half:'#fef3c7', cumulative:'#ede9fe',
+      exception:'#fef3c7', study:'#eef2ff', long:'#e0f2fe', fiveyear:'#dcfce7',
+      prebirth:'#fce7f3', postbirth:'#f5f3ff', maternity:'#fef3c7', 'maternity-ext':'#fee2e2',
+    };
+    const typeColor = typeColors[l.type] || '#475569';
+    const rowColor  = typeBgs[l.type]   || '#f8fafc';
     return `<tr style="background:${rowColor}">
       <td style="padding:9px 14px;text-align:center;font-weight:700;color:#64748b;border:1px solid #e2e8f0">${i+1}</td>
       <td style="padding:9px 14px;font-weight:700;color:#1e293b;border:1px solid #e2e8f0">${f?.name||'—'}</td>
@@ -2014,10 +2228,27 @@ function exportPDF() {
   const fFilter = document.getElementById('log-faculty-filter')?.value||'';
   const tFilter = document.getElementById('log-type-filter')?.value||'';
   const yFilter = document.getElementById('log-year-filter')?.value||'';
-  const typeMap = {normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية - نصف راتب'};
+  const typeMap = {
+    normal:          'اعتيادية',
+    sick:            'مرضية',
+    cumulative:      'تراكمية',
+    half:            'مرضية - نصف راتب',
+    exception:       'استثناء',
+    study:           'إجازة دراسية',
+    long:            'إجازة طويلة',
+    fiveyear:        'إجازة 5 سنوات',
+    prebirth:        'إجازة قبل الوضع',
+    postbirth:       'إجازة بعد الوضع',
+    maternity:       'إجازة أمومة',
+    'maternity-ext': 'تمديد إجازة أمومة',
+  };
 
   const filtered = leaves.filter(l=>{
     if (l.type==='cum-add') return false;
+    if (l.autoDeduct) return false;
+    if (l.type==='normal-refund') return false;
+    if (l.type==='manual-sick-add') return false;
+    if (l.type==='manual-sick-sub') return false;
     if (fFilter && l.facultyId!==fFilter) return false;
     if (tFilter && l.type!==tFilter) return false;
     if (yFilter && l.year!==yFilter) return false;
@@ -2027,9 +2258,19 @@ function exportPDF() {
   const totalDays = filtered.reduce((s,l)=>s+l.days,0);
   const rows = filtered.map((l,i)=>{
     const f = faculty.find(x=>x.id===l.facultyId);
-    const tName = typeMap[l.type]||l.type;
-    const tColor = l.type==='half'?'#d97706':l.type==='sick'?'#dc2626':l.type==='cumulative'?'#7c3aed':'#059669';
-    const tBg = l.type==='half'?'#fef3c7':l.type==='sick'?'#fee2e2':l.type==='cumulative'?'#ede9fe':'#dcfce7';
+    const tName = typeMap[l.type] || l.type;
+    const tColors = {
+      normal:'#059669', sick:'#dc2626', half:'#d97706', cumulative:'#7c3aed',
+      exception:'#d97706', study:'#6366f1', long:'#0891b2', fiveyear:'#059669',
+      prebirth:'#db2777', postbirth:'#9333ea', maternity:'#d97706', 'maternity-ext':'#dc2626',
+    };
+    const tBgs = {
+      normal:'#dcfce7', sick:'#fee2e2', half:'#fef3c7', cumulative:'#ede9fe',
+      exception:'#fef3c7', study:'#eef2ff', long:'#e0f2fe', fiveyear:'#dcfce7',
+      prebirth:'#fce7f3', postbirth:'#f5f3ff', maternity:'#fef3c7', 'maternity-ext':'#fee2e2',
+    };
+    const tColor = tColors[l.type] || '#475569';
+    const tBg    = tBgs[l.type]    || '#f8fafc';
     return `<tr style="background:${i%2===0?'#fff':'#f8fafc'}">
       <td>${i+1}</td>
       <td><strong>${f?.name||'—'}</strong></td>
@@ -2282,25 +2523,28 @@ function openLeaveTypeSelector() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
   if (!fac) return;
   const isFemale = fac.gender === 'female';
-  const genderIcon = isFemale ? '👩' : '👨';
+  const isInstructor = fac.type === 'instructor';
 
-  // Check active extended leaves for cut buttons
-  const activeLong = getActiveExtLeave('long');
-  const activeFiveYear = getActiveExtLeave('fiveyear');
+  const activeLong      = getActiveExtLeave('long');
+  const activeFiveYear  = getActiveExtLeave('fiveyear');
   const activeMaternity = getActiveExtLeave('maternity') || getActiveExtLeave('maternity-ext');
+  const activeStudy     = getActiveExtLeave('study');
 
   let btns = `
-    <button class="btn btn-green" style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('normal')">📅 إجازة اعتيادية</button>
-    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('sick')">🏥 إجازة مرضية</button>
+    <button class="btn btn-green"  style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('normal')">📅 إجازة اعتيادية</button>
+    <button class="btn btn-red"    style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('sick')">🏥 إجازة مرضية</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="closeModal('modal-leave-type');openStudyLeave()">📚 إجازة دراسية</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('long')">🏖️ إجازة طويلة</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 4px 14px rgba(5,150,105,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('fiveyear')">🗓️ إجازة 5 سنوات</button>`;
 
-  if (activeLong) {
-    btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#64748b,#475569);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('long','${activeLong.id}')">✂️ قطع الإجازة الطويلة</button>`;
+  if (isInstructor) {
+    btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="closeModal('modal-leave-type');openException()">⭐ استثناء (إضافة أيام اعتيادية)</button>`;
   }
-  if (activeFiveYear) {
-    btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#64748b,#475569);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('fiveyear','${activeFiveYear.id}')">✂️ قطع إجازة 5 سنوات</button>`;
-  }
+
+  // Cut buttons for active leaves
+  if (activeStudy)    btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('study','${activeStudy.id}')">✂️ قطع الإجازة الدراسية</button>`;
+  if (activeLong)     btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('long','${activeLong.id}')">✂️ قطع الإجازة الطويلة</button>`;
+  if (activeFiveYear) btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('fiveyear','${activeFiveYear.id}')">✂️ قطع إجازة 5 سنوات</button>`;
 
   if (isFemale) {
     btns += `
@@ -2308,14 +2552,220 @@ function openLeaveTypeSelector() {
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#db2777,#be185d);color:#fff;box-shadow:0 4px 14px rgba(219,39,119,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('prebirth')">🤰 إجازة قبل الوضع (21 يوم)</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#9333ea,#7e22ce);color:#fff;box-shadow:0 4px 14px rgba(147,51,234,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('postbirth')">👶 إجازة بعد الوضع (51 يوم)</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;box-shadow:0 4px 14px rgba(217,119,6,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('maternity')">🍼 إجازة أمومة (6 أشهر)</button>`;
-    if (activeMaternity) {
-      btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#64748b,#475569);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('maternity','${activeMaternity.id}')">✂️ قطع إجازة الأمومة</button>`;
-    }
+    if (activeMaternity) btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('maternity','${activeMaternity.id}')">✂️ قطع إجازة الأمومة</button>`;
   }
 
   document.getElementById('leave-type-buttons').innerHTML = btns;
   openModal('modal-leave-type');
 }
+
+// ==================== EXCEPTION (instructor only) ====================
+function openException() {
+  const years = getYearsList();
+  const cy = currentYear();
+  document.getElementById('exc-from').value = '';
+  document.getElementById('exc-days').value = '';
+  document.getElementById('exc-to').value = '';
+  document.getElementById('exc-notes').value = '';
+  document.getElementById('exc-info-box').style.display = 'none';
+  document.getElementById('exc-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-exception');
+}
+
+async function saveException() {
+  const from  = document.getElementById('exc-from').value;
+  const days  = parseInt(document.getElementById('exc-days').value);
+  const year  = document.getElementById('exc-year').value;
+  const notes = document.getElementById('exc-notes').value.trim();
+  const toVal = document.getElementById('exc-to').value;
+  if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
+
+  const toDate = toVal || from;
+  await addLeaveRecord({
+    facultyId: currentFacultyId, type: 'exception',
+    days, fromDate: from, toDate, year,
+    notes: notes || `استثناء — إضافة ${days} يوم اعتيادية`,
+  });
+
+  closeModal('modal-exception');
+  await renderProfile(currentFacultyId);
+  renderFacultyList(); renderDashboard();
+  showToast(`✅ تمت إضافة ${days} يوم للرصيد الاعتيادي بالاستثناء`, 'green');
+  const fac = faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`⭐ استثناء — إضافة ${days} يوم اعتيادية لـ ${fac?.name||''}`, 'orange');
+}
+
+// ==================== STUDY LEAVE ====================
+function openStudyLeave() {
+  const years = getYearsList();
+  const cy = currentYear();
+  document.getElementById('sl-from').value = '';
+  document.getElementById('sl-days').value = '';
+  document.getElementById('sl-to').value   = '';
+  document.getElementById('sl-notes').value = '';
+  document.getElementById('sl-info-box').style.display = 'none';
+  document.getElementById('sl-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-study-leave');
+}
+
+function calcStudyLeaveEnd() {
+  const from = document.getElementById('sl-from').value;
+  const days = parseInt(document.getElementById('sl-days').value);
+  if (from && days > 0) {
+    const d = new Date(from);
+    d.setDate(d.getDate() + days - 1);
+    document.getElementById('sl-to').value = d.toISOString().split('T')[0];
+    const deductCount = Math.floor(days / 10);
+    const year = document.getElementById('sl-year').value;
+    const bal  = getBalance(currentFacultyId, year);
+    const box  = document.getElementById('sl-info-box');
+    box.style.display = 'block';
+    box.innerHTML = `<span style="color:#6366f1;font-weight:700;">📚 الإجازة الدراسية: ${days} يوم</span><br>
+      <span style="color:#64748b;">📊 سيُستقطع <strong>${deductCount}</strong> يوم من الاعتيادية (كل 10 أيام → يوم) | الرصيد الاعتيادي الحالي: <strong>${bal.normal}</strong> يوم</span>`;
+  }
+}
+
+async function saveStudyLeave() {
+  const from  = document.getElementById('sl-from').value;
+  const days  = parseInt(document.getElementById('sl-days').value);
+  const year  = document.getElementById('sl-year').value;
+  const notes = document.getElementById('sl-notes').value.trim();
+  const toDate = document.getElementById('sl-to').value;
+  if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
+
+  const deductDays  = Math.floor(days / 10);
+  const bal         = getBalance(currentFacultyId, year);
+  const actualDeduct = Math.min(deductDays, bal.normal);
+
+  const rec = await addLeaveRecord({
+    facultyId: currentFacultyId, type: 'study',
+    days, fromDate: from, toDate, year,
+    notes: notes || 'إجازة دراسية',
+    deductDays: actualDeduct, isActive: true, cutDate: null,
+  });
+
+  if (actualDeduct > 0) {
+    await addLeaveRecord({
+      facultyId: currentFacultyId, type: 'normal',
+      days: actualDeduct, fromDate: from, toDate, year,
+      notes: `استقطاع تلقائي من الإجازة الدراسية (كل 10 أيام)`,
+      autoDeduct: true, parentLeaveId: rec.id,
+    });
+  }
+
+  closeModal('modal-study-leave');
+  await renderProfile(currentFacultyId);
+  renderFacultyList(); renderDashboard();
+  showToast('✅ تم تسجيل الإجازة الدراسية بنجاح', 'green');
+  const fac = faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`📚 إجازة دراسية (${days} يوم) — ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`, 'blue');
+}
+
+// ==================== MANUAL BALANCE EDIT ====================
+function openManualBalance() {
+  const years = getYearsList();
+  const cy    = currentYear();
+  document.getElementById('mb-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  document.getElementById('mb-days').value  = '';
+  document.getElementById('mb-notes').value = '';
+  document.getElementById('mb-type').value  = 'normal';
+  document.getElementById('mb-op').value    = 'set';
+  updateManualBalanceInfo();
+  openModal('modal-manual-balance');
+}
+
+function updateManualBalanceInfo() {
+  const year = document.getElementById('mb-year')?.value || currentYear();
+  const bal  = getBalance(currentFacultyId, year);
+  const cum  = getCumBalance(currentFacultyId);
+  const type = document.getElementById('mb-type')?.value || 'normal';
+  const cur  = type==='normal' ? bal.normal : type==='sick' ? bal.sick : cum;
+  const label= type==='normal'?'الاعتيادية':type==='sick'?'المرضية':'التراكمية';
+  document.getElementById('mb-info').innerHTML =
+    `<span style="font-weight:700;color:#d97706;">📊 الرصيد الحالي للإجازة ${label}: <strong>${cur}</strong> يوم</span>`;
+}
+
+async function saveManualBalance() {
+  const type  = document.getElementById('mb-type').value;
+  const op    = document.getElementById('mb-op').value;
+  const days  = parseInt(document.getElementById('mb-days').value);
+  const year  = document.getElementById('mb-year').value;
+  const notes = document.getElementById('mb-notes').value.trim() || 'تعديل يدوي للرصيد';
+  if (!days || days < 0) { showToast('⚠️ الرجاء إدخال عدد أيام صحيح', 'red'); return; }
+
+  const bal = getBalance(currentFacultyId, year);
+  const cum = getCumBalance(currentFacultyId);
+  const today = new Date().toISOString().split('T')[0];
+
+  let recType, recDays, logLabel;
+
+  if (type === 'normal') {
+    const cur = bal.normal;
+    if (op === 'set') {
+      // To set balance to X: add or subtract the difference
+      const diff = days - cur;
+      if (diff === 0) { showToast('ℹ️ الرصيد مطابق للقيمة المحددة', 'orange'); return; }
+      recType = diff > 0 ? 'exception' : 'normal';
+      recDays = Math.abs(diff);
+      if (diff < 0) {
+        // adding a normal usage record
+        await addLeaveRecord({ facultyId:currentFacultyId, type:'normal', days:recDays, fromDate:today, toDate:today, year, notes:`${notes} (تحديد الرصيد إلى ${days} يوم)`, autoDeduct:true });
+      } else {
+        await addLeaveRecord({ facultyId:currentFacultyId, type:'exception', days:recDays, fromDate:today, toDate:today, year, notes:`${notes} (تحديد الرصيد إلى ${days} يوم)` });
+      }
+      logLabel = `تحديد رصيد الاعتيادية إلى ${days} يوم`;
+    } else if (op === 'add') {
+      await addLeaveRecord({ facultyId:currentFacultyId, type:'exception', days, fromDate:today, toDate:today, year, notes:`${notes} (إضافة يدوية)` });
+      logLabel = `إضافة ${days} يوم للرصيد الاعتيادي`;
+    } else {
+      await addLeaveRecord({ facultyId:currentFacultyId, type:'normal', days, fromDate:today, toDate:today, year, notes:`${notes} (خصم يدوي)`, autoDeduct:true });
+      logLabel = `خصم ${days} يوم من الرصيد الاعتيادي`;
+    }
+  } else if (type === 'sick') {
+    const cur = bal.sick;
+    if (op === 'set') {
+      const diff = days - cur;
+      if (diff === 0) { showToast('ℹ️ الرصيد مطابق', 'orange'); return; }
+      recType = diff > 0 ? 'manual-sick-add' : 'manual-sick-sub';
+      recDays = Math.abs(diff);
+      await addLeaveRecord({ facultyId:currentFacultyId, type:recType, days:recDays, fromDate:today, toDate:today, year, notes:`${notes} (تحديد الرصيد المرضي إلى ${days})` });
+      logLabel = `تحديد رصيد المرضية إلى ${days} يوم`;
+    } else if (op === 'add') {
+      await addLeaveRecord({ facultyId:currentFacultyId, type:'manual-sick-add', days, fromDate:today, toDate:today, year, notes:`${notes} (إضافة يدوية)` });
+      logLabel = `إضافة ${days} يوم للرصيد المرضي`;
+    } else {
+      await addLeaveRecord({ facultyId:currentFacultyId, type:'manual-sick-sub', days, fromDate:today, toDate:today, year, notes:`${notes} (خصم يدوي)` });
+      logLabel = `خصم ${days} يوم من الرصيد المرضي`;
+    }
+  } else {
+    // cumulative
+    if (op === 'set') {
+      const diff = days - cum;
+      if (diff === 0) { showToast('ℹ️ الرصيد مطابق', 'orange'); return; }
+      if (diff > 0) {
+        await addLeaveRecord({ facultyId:currentFacultyId, type:'cum-add', days:diff, fromDate:today, toDate:today, year, notes:`${notes} (تحديد التراكمي)` });
+      } else {
+        await addLeaveRecord({ facultyId:currentFacultyId, type:'cumulative', days:Math.abs(diff), fromDate:today, toDate:today, year, notes:`${notes} (تحديد التراكمي)` });
+      }
+      logLabel = `تحديد الرصيد التراكمي إلى ${days} يوم`;
+    } else if (op === 'add') {
+      await addLeaveRecord({ facultyId:currentFacultyId, type:'cum-add', days, fromDate:today, toDate:today, year, notes:`${notes} (إضافة يدوية)` });
+      logLabel = `إضافة ${days} يوم للتراكمي`;
+    } else {
+      await addLeaveRecord({ facultyId:currentFacultyId, type:'cumulative', days, fromDate:today, toDate:today, year, notes:`${notes} (خصم يدوي)` });
+      logLabel = `خصم ${days} يوم من التراكمي`;
+    }
+  }
+
+  closeModal('modal-manual-balance');
+  await renderProfile(currentFacultyId);
+  renderFacultyList(); renderDashboard();
+  showToast('✅ تم تعديل الرصيد بنجاح', 'green');
+  const fac = faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`✏️ تعديل يدوي للرصيد — ${fac?.name||''} | ${logLabel}`, 'orange');
+}
+
+
 
 // Returns active extended leave record for faculty (not yet cut)
 function getActiveExtLeave(type) {
@@ -2326,11 +2776,12 @@ function getActiveExtLeave(type) {
 // ==================== EXTENDED LEAVE LOGIC ====================
 // Days per type
 const EXT_LEAVE_CONFIG = {
-  long:      { label:'إجازة طويلة', days: null, deductEvery10: true, icon:'🏖️', color:'#0891b2' },
-  fiveyear:  { label:'إجازة 5 سنوات', days: 1825, deductEvery10: true, icon:'🗓️', color:'#059669' },
-  prebirth:  { label:'إجازة قبل الوضع', days: 21,  deductEvery10: true, icon:'🤰', color:'#db2777' },
-  postbirth: { label:'إجازة بعد الوضع', days: 51,  deductEvery10: true, icon:'👶', color:'#9333ea' },
-  maternity: { label:'إجازة أمومة',     days: 183, deductEvery10: true, icon:'🍼', color:'#d97706', canExtend: true },
+  long:      { label:'إجازة طويلة',         days: null, deductEvery10: true, icon:'🏖️', color:'#0891b2' },
+  fiveyear:  { label:'إجازة 5 سنوات',        days: 1825, deductEvery10: true, icon:'🗓️', color:'#059669' },
+  study:     { label:'إجازة دراسية',          days: null, deductEvery10: true, icon:'📚', color:'#6366f1', canCut: true },
+  prebirth:  { label:'إجازة قبل الوضع',       days: 21,   deductEvery10: true, icon:'🤰', color:'#db2777' },
+  postbirth: { label:'إجازة بعد الوضع',       days: 51,   deductEvery10: true, icon:'👶', color:'#9333ea' },
+  maternity: { label:'إجازة أمومة',           days: 183,  deductEvery10: true, icon:'🍼', color:'#d97706', canExtend: true },
   'maternity-ext': { label:'تمديد إجازة أمومة', days: 183, deductEvery10: true, icon:'🍼+', color:'#dc2626' },
 };
 
@@ -2494,42 +2945,32 @@ async function confirmCutLeave() {
 
   const cfg = EXT_LEAVE_CONFIG[cuttingLeaveType] || EXT_LEAVE_CONFIG['maternity'];
 
-  // Update the leave record: set cutDate
   const fromD = new Date(lv.fromDate);
   const cutD  = new Date(cutDate);
-  const actualDays = Math.max(1, Math.round((cutD - fromD) / 86400000) + 1);
+  // أيام الإجازة الفعلية حتى يوم القطع (يوم المباشرة يُعدّ آخر يوم إجازة)
+  const actualDays = Math.max(1, Math.round((cutD - fromD) / 86400000));
 
-  // Recalculate what was actually deducted up to cutDate
-  const actualDeduct = Math.floor(actualDays / 10);
+  // الاستقطاع الصحيح بناءً على الأيام الفعلية
+  const correctDeduct = Math.floor(actualDays / 10);
   const originalDeduct = lv.deductDays || 0;
-  const refundDeduct = Math.max(0, originalDeduct - actualDeduct);
 
-  // Update the original record with cutDate & adjusted days
-  const updated = { ...lv, cutDate, toDate: cutDate, days: actualDays, isActive: false };
+  // إذا كان الاستقطاع الأصلي أكثر من الصحيح → نسترد الفرق من سجلات normal فقط
+  // لكن لا يعود أي شيء للتراكمي — فقط يتوقف الاستقطاع
+  const refundNormal = Math.max(0, originalDeduct - correctDeduct);
+
+  // تحديث سجل الإجازة الأصلي بوضع تاريخ القطع
+  const updated = { ...lv, cutDate, toDate: cutDate, days: actualDays, isActive: false, deductDays: correctDeduct };
   await dbPut('leaves', updated);
 
-  // Refund over-deducted normal days if any
-  if (refundDeduct > 0) {
-    const year = lv.year;
-    await addLeaveRecord({
-      facultyId: currentFacultyId,
-      type: 'cum-add',
-      days: refundDeduct,
-      fromDate: cutDate,
-      toDate: cutDate,
-      year,
-      notes: `استرداد استقطاع زائد عند قطع ${cfg.label}`,
-      autoDeduct: true,
-    });
-    // Also remove from normal usage by adding a negative normal record
+  // استرداد الأيام الاعتيادية الزائدة (إن وجدت) فقط داخل الرصيد الاعتيادي
+  if (refundNormal > 0) {
     await addLeaveRecord({
       facultyId: currentFacultyId,
       type: 'normal-refund',
-      days: -refundDeduct,
-      fromDate: cutDate,
-      toDate: cutDate,
-      year,
-      notes: `استرداد استقطاع ${cfg.label} عند القطع`,
+      days: refundNormal,
+      fromDate: cutDate, toDate: cutDate,
+      year: lv.year,
+      notes: `استرداد استقطاع زائد عند قطع ${cfg.label} — يُضاف للرصيد الاعتيادي فقط`,
       autoDeduct: true,
     });
   }
@@ -2537,11 +2978,14 @@ async function confirmCutLeave() {
   leaves = await dbAll('leaves');
   closeModal('modal-cut-leave');
   await renderProfile(currentFacultyId);
-  renderFacultyList();
-  renderDashboard();
+  renderFacultyList(); renderDashboard();
   showToast(`✅ تم قطع ${cfg.label} والمباشرة بتاريخ ${cutDate}`, 'green');
   const fac = faculty.find(f => f.id === currentFacultyId);
-  await logActivity(`✂️ قطع ${cfg.label} - مباشرة بتاريخ ${cutDate} - ${fac?.name||''}${refundDeduct>0?' | استرداد '+refundDeduct+' يوم اعتيادية':''}`, 'orange');
+  await logActivity(
+    `✂️ قطع ${cfg.label} — مباشرة ${cutDate} — ${fac?.name||''}` +
+    (refundNormal > 0 ? ` | استرداد ${refundNormal} يوم للرصيد الاعتيادي` : ''),
+    'orange'
+  );
 }
 
 
