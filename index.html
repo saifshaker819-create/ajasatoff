@@ -579,7 +579,10 @@
     <div class="topbar-avatar" id="topbar-avatar-letter">A</div>
     <span id="topbar-username">—</span>
   </div>
-  <span id="online-badge" style="font-size:13px;font-weight:700;color:#10b981;">🟢 متصل</span> <span id="sync-badge" style="font-size:12px;font-weight:700;display:none;"></span> <button class="btn btn-outline btn-sm" onclick="openChangePassword()" title="تغيير كلمة المرور" style="gap:6px;">🔒 تغيير الرمز السري</button>
+  <span id="online-badge" style="font-size:13px;font-weight:700;color:#10b981;">🟢 متصل</span>
+  <span id="sync-badge" style="font-size:12px;font-weight:700;display:none;"></span>
+  <button onclick="syncNow()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#6366f1;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;" title="مزامنة فورية">🔄 مزامنة</button>
+  <button class="btn btn-outline btn-sm" onclick="openChangePassword()" title="تغيير كلمة المرور" style="gap:6px;">🔒 تغيير الرمز السري</button>
   <button class="btn btn-outline btn-sm" onclick="doLogout()" style="color:var(--red);border-color:rgba(239,68,68,0.25);">🚪 خروج</button>
 </div>
 
@@ -1404,49 +1407,42 @@ function idbGet(store, key) {
 }
 
 // ==================== SUPABASE HELPERS ====================
-async function sbFetch(path, options = {}) {
-  const res = await fetch(SUPABASE_URL + path, {
-    ...options,
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': 'Bearer ' + SUPABASE_KEY,
-      'Content-Type': 'application/json',
-      'Prefer': options._prefer || '',
-      ...(options.headers || {})
-    }
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt);
-  }
-  const txt = await res.text();
-  return txt ? JSON.parse(txt) : [];
-}
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_KEY,
+  'Content-Type': 'application/json'
+};
 
 async function sbGetAll(table) {
-  return sbFetch(`/rest/v1/${table}?select=*`);
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, { headers: SB_HEADERS });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
+
 async function sbUpsert(table, data, onConflict) {
-  return sbFetch(`/rest/v1/${table}?on_conflict=${onConflict}`, {
+  const rows = Array.isArray(data) ? data : [data];
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
     method: 'POST',
-    _prefer: 'resolution=merge-duplicates,return=minimal',
-    body: JSON.stringify(Array.isArray(data) ? data : [data])
+    headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(rows)
   });
+  if (!res.ok) throw new Error(await res.text());
+  return true;
 }
+
 async function sbDelete(table, id, col='id') {
-  return sbFetch(`/rest/v1/${table}?${col}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
-}
-async function sbDeleteWhere(table, col, val) {
-  return sbFetch(`/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, { method: 'DELETE' });
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: SB_HEADERS
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return true;
 }
 
 // ==================== SYNC QUEUE ====================
-// Every write goes to IDB immediately, AND is queued for Supabase sync.
-// If online → syncs right away. If offline → synced next time online.
-
 async function queueSync(op) {
-  // op = { action:'upsert'|'delete', table, data?, id?, col? }
   await idbPut('sync_queue', { ...op, ts: Date.now() });
+  updateSyncBadge();
   if (isOnline) syncPendingQueue();
 }
 
@@ -1456,23 +1452,23 @@ async function syncPendingQueue() {
   _syncing = true;
   try {
     const queue = await idbAll('sync_queue');
-    if (!queue.length) { _syncing = false; return; }
+    if (!queue.length) { _syncing = false; updateSyncBadge(); return; }
+    let successCount = 0;
     for (const op of queue) {
       try {
         if (op.action === 'upsert') {
-          await sbUpsert(op.table, op.data, op.conflict || 'id');
+          const conflictCol = op.conflict || 'id';
+          await sbUpsert(op.table, op.data, conflictCol);
         } else if (op.action === 'delete') {
           await sbDelete(op.table, op.id, op.col || 'id');
-        } else if (op.action === 'deleteWhere') {
-          await sbDeleteWhere(op.table, op.col, op.val);
         }
         await idbDelete('sync_queue', op.qid);
+        successCount++;
       } catch(e) {
-        console.warn('Sync failed for op', op, e);
-        // leave it in queue to retry later
+        console.warn('Sync op failed:', op.action, op.table, e.message);
       }
     }
-    updateSyncBadge();
+    if (successCount > 0) updateSyncBadge();
   } finally {
     _syncing = false;
   }
@@ -1499,32 +1495,24 @@ async function updateSyncBadge() {
 async function pullFromSupabase() {
   if (!isOnline) return;
   try {
-    const [sbFaculty, sbLeaves] = await Promise.all([
+    // Snapshot counts BEFORE pulling
+    const prevFaculty = (await idbAll('faculty')).length;
+    const prevLeaves  = (await idbAll('leaves')).length;
+
+    const [sbFaculty, sbLeaves, sbAccounts, sbSettings] = await Promise.all([
       sbGetAll('faculty'),
-      sbGetAll('leaves')
+      sbGetAll('leaves'),
+      sbGetAll('accounts').catch(() => []),
+      sbGetAll('settings').catch(() => [])
     ]);
 
-    // Check if data actually changed before updating UI
-    const oldFacultyJson = JSON.stringify(faculty.map(f=>f.id).sort());
-    const oldLeavesJson  = JSON.stringify(leaves.map(l=>l.id).sort());
-    const newFacultyJson = JSON.stringify(sbFaculty.map(f=>f.id).sort());
-    const newLeavesJson  = JSON.stringify(sbLeaves.map(l=>l.id).sort());
-    const oldFacultyData = JSON.stringify(faculty);
-    const newFacultyData = JSON.stringify(sbFaculty);
-    const oldLeavesData  = JSON.stringify(leaves);
-    const newLeavesData  = JSON.stringify(sbLeaves);
-    const dataChanged = (oldFacultyJson !== newFacultyJson) ||
-                        (oldLeavesJson  !== newLeavesJson)  ||
-                        (oldFacultyData !== newFacultyData) ||
-                        (oldLeavesData  !== newLeavesData);
-
-    if (!dataChanged) return; // no changes, skip UI update
-
     // Write all remote records into local IDB
-    for (const f of sbFaculty) await idbPut('faculty', f);
-    for (const l of sbLeaves)  await idbPut('leaves', l);
+    for (const f of sbFaculty)   await idbPut('faculty', f);
+    for (const l of sbLeaves)    await idbPut('leaves', l);
+    for (const a of sbAccounts)  await idbPut('accounts', a);
+    for (const s of sbSettings)  await idbPut('settings', s);
 
-    // Remove local records that no longer exist remotely
+    // Remove local faculty/leaves that no longer exist remotely
     const localFaculty = await idbAll('faculty');
     const remoteIds = new Set(sbFaculty.map(f => f.id));
     for (const f of localFaculty) {
@@ -1543,7 +1531,11 @@ async function pullFromSupabase() {
     renderFacultyList();
     populateFilters();
     if (currentFacultyId) renderProfile(currentFacultyId);
-    showToast('🔄 تم تحديث البيانات من جهاز آخر', 'blue');
+
+    // Show notification only if data actually changed
+    if (sbFaculty.length !== prevFaculty || sbLeaves.length !== prevLeaves) {
+      showToast('🔄 تم تحديث البيانات من جهاز آخر', 'blue');
+    }
   } catch(e) {
     console.warn('pullFromSupabase failed:', e);
   }
@@ -1559,9 +1551,9 @@ async function dbAll(store) {
 
 async function dbPut(store, obj) {
   await idbPut(store, obj);
-  if (['faculty','leaves','accounts','settings'].includes(store)) {
-    const conflictCol = store === 'accounts' ? 'username' : store === 'settings' ? 'key' : 'id';
-    await queueSync({ action:'upsert', table: store, data: obj, conflict: conflictCol });
+  const conflictMap = { faculty:'id', leaves:'id', accounts:'username', settings:'key' };
+  if (conflictMap[store]) {
+    await queueSync({ action:'upsert', table: store, data: obj, conflict: conflictMap[store] });
   }
 }
 
@@ -1774,14 +1766,33 @@ async function init() {
   pullFromSupabase();
 }
 
+// ==================== SYNC NOW (manual) ====================
+async function syncNow() {
+  const btn = event.target;
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  try {
+    await syncPendingQueue();
+    await pullFromSupabase();
+    showToast('✅ تمت المزامنة بنجاح', 'green');
+  } catch(e) {
+    showToast('❌ فشلت المزامنة: ' + e.message, 'red');
+  } finally {
+    btn.textContent = '🔄 مزامنة';
+    btn.disabled = false;
+  }
+}
+
 // ==================== BOOT ====================
 (async function boot() {
   await initDB();
   await seedDefaultAccounts();
   updateOnlineBadge();
-  // Try to sync any pending ops from last session
-  if (isOnline) syncPendingQueue();
-  // Auto-sync every 30 seconds when online
+  // Pull latest data immediately on startup, then sync pending queue
+  if (isOnline) {
+    pullFromSupabase().then(() => syncPendingQueue());
+  }
+  // Auto-sync every 8 seconds when online
   setInterval(() => { if (isOnline) { syncPendingQueue(); pullFromSupabase(); } }, 8000);
   document.getElementById('login-user').focus();
 })();
