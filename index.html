@@ -1602,7 +1602,7 @@ async function seedDefaultAccounts() {
   if (existing.length > 0) return;
   for (const p of DEFAULT_ACCOUNTS) {
     const hash = await sha256(p.password);
-    await dbPut('accounts', { username: p.username, hash });
+    await idbPut('accounts', { username: p.username, hash }); // محلي فقط بدون مزامنة
   }
 }
 
@@ -1684,7 +1684,7 @@ async function saveChangePassword() {
   const account = await getAccountFromIDB(currentUser);
   if (!account || account.hash !== currentHash) { errEl.textContent='كلمة المرور الحالية غير صحيحة'; errEl.style.display='block'; return; }
   const newHash = await sha256(newPass);
-  await dbPut('accounts', { username: currentUser, hash: newHash });
+  await idbPut('accounts', { username: currentUser, hash: newHash }); // محلي فقط
   closeModal('modal-change-pass');
   showToast('✅ تم تغيير كلمة المرور بنجاح', 'green');
   await logActivity('🔒 تم تغيير كلمة المرور', 'orange');
