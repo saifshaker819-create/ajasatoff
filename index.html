@@ -1454,6 +1454,7 @@ async function syncPendingQueue() {
     const queue = await idbAll('sync_queue');
     if (!queue.length) { _syncing = false; updateSyncBadge(); return; }
     let successCount = 0;
+    let lastError = null;
     for (const op of queue) {
       try {
         if (op.action === 'upsert') {
@@ -1465,10 +1466,11 @@ async function syncPendingQueue() {
         await idbDelete('sync_queue', op.qid);
         successCount++;
       } catch(e) {
-        console.warn('Sync op failed:', op.action, op.table, e.message);
+        lastError = `[${op.table}] ${e.message}`;
       }
     }
     if (successCount > 0) updateSyncBadge();
+    if (lastError) showToast('❌ خطأ مزامنة: ' + lastError, 'red');
   } finally {
     _syncing = false;
   }
@@ -1551,7 +1553,8 @@ async function dbAll(store) {
 
 async function dbPut(store, obj) {
   await idbPut(store, obj);
-  const conflictMap = { faculty:'id', leaves:'id', accounts:'username', settings:'key' };
+  // فقط faculty و leaves تُزامن مع Supabase
+  const conflictMap = { faculty:'id', leaves:'id' };
   if (conflictMap[store]) {
     await queueSync({ action:'upsert', table: store, data: obj, conflict: conflictMap[store] });
   }
@@ -1616,8 +1619,17 @@ async function doLogin() {
 
   if (btn) { btn.textContent='⏳ جاري التحقق...'; btn.disabled=true; }
   try {
-    const hash    = await sha256(pass);
-    const account = await getAccountFromIDB(user);
+    const hash = await sha256(pass);
+    // أولاً: ابحث محلياً
+    let account = await getAccountFromIDB(user);
+    // إذا ما وُجد محلياً وهناك اتصال — اسحب من Supabase
+    if (!account && isOnline) {
+      try {
+        const remote = await sbGetAll('accounts');
+        for (const a of remote) await idbPut('accounts', a);
+        account = await getAccountFromIDB(user);
+      } catch(e) {}
+    }
     if (account && account.hash === hash) {
       errEl.style.display = 'none';
       currentUser = user;
@@ -1772,6 +1784,13 @@ async function syncNow() {
   btn.textContent = '⏳';
   btn.disabled = true;
   try {
+    // احذف أي عمليات accounts/settings معلقة قديمة
+    const queue = await idbAll('sync_queue');
+    for (const op of queue) {
+      if (op.table === 'accounts' || op.table === 'settings') {
+        await idbDelete('sync_queue', op.qid);
+      }
+    }
     await syncPendingQueue();
     await pullFromSupabase();
     showToast('✅ تمت المزامنة بنجاح', 'green');
@@ -1788,6 +1807,15 @@ async function syncNow() {
   await initDB();
   await seedDefaultAccounts();
   updateOnlineBadge();
+  // احذف عمليات accounts/settings المعلقة القديمة
+  try {
+    const queue = await idbAll('sync_queue');
+    for (const op of queue) {
+      if (op.table === 'accounts' || op.table === 'settings') {
+        await idbDelete('sync_queue', op.qid);
+      }
+    }
+  } catch(e) {}
   // Pull latest data immediately on startup, then sync pending queue
   if (isOnline) {
     pullFromSupabase().then(() => syncPendingQueue());
