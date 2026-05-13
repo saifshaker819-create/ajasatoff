@@ -1413,29 +1413,34 @@ const SB_HEADERS = {
   'Content-Type': 'application/json'
 };
 
-async function sbGetAll(table) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
-      headers: SB_HEADERS,
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`${res.status}: ${txt}`);
+async function sbFetchWithRetry(url, options, retries=3) {
+  for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeout);
+      return res;
+    } catch(e) {
+      clearTimeout(timeout);
+      if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, 2000 * (i + 1)));
     }
-    return res.json();
-  } catch(e) {
-    clearTimeout(timeout);
-    throw e;
   }
+}
+
+async function sbGetAll(table) {
+  const res = await sbFetchWithRetry(`${SUPABASE_URL}/rest/v1/${table}?select=*`, { headers: SB_HEADERS });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`${res.status}: ${txt}`);
+  }
+  return res.json();
 }
 
 async function sbUpsert(table, data, onConflict) {
   const rows = Array.isArray(data) ? data : [data];
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
+  const res = await sbFetchWithRetry(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
     method: 'POST',
     headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(rows)
@@ -1445,7 +1450,7 @@ async function sbUpsert(table, data, onConflict) {
 }
 
 async function sbDelete(table, id, col='id') {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(id)}`, {
+  const res = await sbFetchWithRetry(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: SB_HEADERS
   });
