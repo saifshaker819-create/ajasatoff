@@ -579,7 +579,7 @@
     <div class="topbar-avatar" id="topbar-avatar-letter">A</div>
     <span id="topbar-username">—</span>
   </div>
-  <button class="btn btn-outline btn-sm" onclick="openChangePassword()" title="تغيير كلمة المرور" style="gap:6px;">🔒 تغيير الرمز السري</button>
+  <span id="online-badge" style="font-size:13px;font-weight:700;color:#10b981;">🟢 متصل</span> <span id="sync-badge" style="font-size:12px;font-weight:700;display:none;"></span> <button class="btn btn-outline btn-sm" onclick="openChangePassword()" title="تغيير كلمة المرور" style="gap:6px;">🔒 تغيير الرمز السري</button>
   <button class="btn btn-outline btn-sm" onclick="doLogout()" style="color:var(--red);border-color:rgba(239,68,68,0.25);">🚪 خروج</button>
 </div>
 
@@ -1316,9 +1316,36 @@
 <div id="toast-container"></div>
 
 <script>
-// ==================== IDB ====================
+// =====================================================
+// OFFLINE-FIRST + SUPABASE SYNC
+// =====================================================
+// البيانات تُحفظ محلياً في IndexedDB أولاً (تعمل بدون انترنت)
+// عند توفر الانترنت تُزامن تلقائياً مع Supabase
+// =====================================================
+
+const SUPABASE_URL = 'https://wtbaednddffkyytzbpoit.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0YmFlZG5kZGZreXl0emJwb2l0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NTIwMTMsImV4cCI6MjA5NDIyODAxM30.WH4wsBERzZ72NwbTQri5TxK9SCfLjqq8WkWcLvXxit4';
+
+// ==================== ONLINE STATUS ====================
+let isOnline = navigator.onLine;
+window.addEventListener('online',  () => { isOnline = true;  updateOnlineBadge(); syncPendingQueue(); });
+window.addEventListener('offline', () => { isOnline = false; updateOnlineBadge(); });
+
+function updateOnlineBadge() {
+  const badge = document.getElementById('online-badge');
+  if (!badge) return;
+  if (isOnline) {
+    badge.textContent = '🟢 متصل';
+    badge.style.color = '#10b981';
+  } else {
+    badge.textContent = '🔴 غير متصل';
+    badge.style.color = '#ef4444';
+  }
+}
+
+// ==================== IDB SETUP ====================
 const IDB_NAME = 'FacultyLeaveDB';
-const IDB_VER = 2;   // bumped to 2: added accounts + activity_log stores
+const IDB_VER  = 4; // bumped for sync queue store
 let db;
 
 function initDB() {
@@ -1326,1954 +1353,284 @@ function initDB() {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      // existing stores
-      if (!d.objectStoreNames.contains('faculty')) d.createObjectStore('faculty', {keyPath:'id'});
+      if (!d.objectStoreNames.contains('faculty'))      d.createObjectStore('faculty', {keyPath:'id'});
       if (!d.objectStoreNames.contains('leaves')) {
         const ls = d.createObjectStore('leaves', {keyPath:'id'});
         ls.createIndex('facultyId','facultyId',{unique:false});
       }
-      // NEW: accounts store — key = username, value = { username, hash }
-      if (!d.objectStoreNames.contains('accounts')) {
-        d.createObjectStore('accounts', {keyPath:'username'});
-      }
-      // NEW: activity_log store — key = id (auto), index by username
+      if (!d.objectStoreNames.contains('accounts'))     d.createObjectStore('accounts', {keyPath:'username'});
       if (!d.objectStoreNames.contains('activity_log')) {
         const als = d.createObjectStore('activity_log', {keyPath:'id', autoIncrement:true});
         als.createIndex('username','username',{unique:false});
       }
-      // NEW: settings store — key = key, value = { key, value }
-      if (!d.objectStoreNames.contains('settings')) {
-        d.createObjectStore('settings', {keyPath:'key'});
+      if (!d.objectStoreNames.contains('settings'))     d.createObjectStore('settings', {keyPath:'key'});
+      if (!d.objectStoreNames.contains('sync_queue')) {
+        // queue for offline changes waiting to sync
+        d.createObjectStore('sync_queue', {keyPath:'qid', autoIncrement:true});
       }
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror = e => rej(e);
+    req.onerror   = e => rej(e);
   });
 }
 
-function dbAll(store) {
+// ==================== IDB HELPERS ====================
+function idbAll(store) {
   return new Promise((res, rej) => {
-    const tx = db.transaction(store,'readonly');
+    const tx  = db.transaction(store,'readonly');
     const req = tx.objectStore(store).getAll();
-    req.onsuccess = () => res(req.result);
-    req.onerror = () => rej();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror   = () => rej([]);
   });
 }
-function dbPut(store, obj) {
+function idbPut(store, obj) {
   return new Promise((res, rej) => {
-    const tx = db.transaction(store,'readwrite');
+    const tx  = db.transaction(store,'readwrite');
     const req = tx.objectStore(store).put(obj);
     req.onsuccess = () => res();
-    req.onerror = () => rej();
+    req.onerror   = () => rej();
   });
 }
-function dbDelete(store, id) {
+function idbDelete(store, id) {
   return new Promise((res, rej) => {
-    const tx = db.transaction(store,'readwrite');
+    const tx  = db.transaction(store,'readwrite');
     const req = tx.objectStore(store).delete(id);
     req.onsuccess = () => res();
-    req.onerror = () => rej();
+    req.onerror   = () => rej();
   });
 }
-
-// Settings helpers (IDB-backed, replaces all localStorage usage)
-function dbGetSetting(key) {
+function idbGet(store, key) {
   return new Promise((res, rej) => {
-    const tx = db.transaction('settings','readonly');
-    const req = tx.objectStore('settings').get(key);
-    req.onsuccess = () => res(req.result ? req.result.value : null);
-    req.onerror = () => res(null);
-  });
-}
-function dbSetSetting(key, value) {
-  return new Promise((res, rej) => {
-    const tx = db.transaction('settings','readwrite');
-    const req = tx.objectStore('settings').put({ key, value });
-    req.onsuccess = () => res();
-    req.onerror = () => rej();
+    const tx  = db.transaction(store,'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => res(req.result || null);
+    req.onerror   = () => res(null);
   });
 }
 
-// ==================== STATE ====================
-let faculty = [];
-let leaves = [];
-let currentFacultyId = null;
-let currentLeaveType = 'normal';
-let alertCallback = null;
-
-const NORMAL_DAYS = 36;       // موظف عادي
-const NORMAL_DAYS_INSTRUCTOR = 15; // تدريسي
-const SICK_DAYS = 30;
-
-function getNormalDays(facultyId) {
-  const fac = faculty.find(f=>f.id===facultyId);
-  return fac && fac.type === 'instructor' ? NORMAL_DAYS_INSTRUCTOR : NORMAL_DAYS;
-}
-
-function currentYear() {
-  const now = new Date();
-  const y = now.getFullYear();
-  return now.getMonth() >= 8 ? `${y}/${y+1}` : `${y-1}/${y}`;
-}
-
-function getYearsList() {
-  const start = 2020;
-  const end = new Date().getFullYear() + 2;
-  const ys = [];
-  for (let y = start; y <= end; y++) ys.push(`${y}/${y+1}`);
-  return ys;
-}
-
-// ==================== INIT ====================
-async function init() {
-  await initDB();
-  await seedDefaultAccounts();   // seed hashed passwords into IDB on first run
-  faculty = await dbAll('faculty');
-  leaves  = await dbAll('leaves');
-
-  const cy = currentYear();
-  document.getElementById('current-year-label').textContent = cy;
-  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('ar-IQ', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
-
-  renderDashboard();
-  renderFacultyList();
-  populateFilters();
-}
-
-// ==================== BOOT (runs immediately on page load) ====================
-// We need IDB ready before showing the login screen so seedDefaultAccounts works.
-// initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
-(async function boot() {
-  await initDB();
-  await seedDefaultAccounts();
-  // focus the username field once the login screen is visible
-  document.getElementById('login-user').focus();
-})();
-
-// ==================== NAVIGATION ====================
-function showPage(name) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  const items = document.querySelectorAll('.nav-item');
-  items.forEach(i => { if (i.textContent.includes(pageNames[name])) i.classList.add('active'); });
-  if (name === 'leaves') renderLeavesLog();
-  if (name === 'statistics') renderStats();
-  if (name === 'dashboard') renderDashboard();
-  if (name === 'database') renderDbInfo();
-}
-const pageNames = { dashboard:'الرئيسية', faculty:'الموظف', profile:'', leaves:'سجل', statistics:'الإحصائيات', database:'قاعدة' };
-
-// ==================== DASHBOARD ====================
-function renderDashboard() {
-  const cy = currentYear();
-  const totalFaculty = faculty.length;
-  const cyLeaves = leaves.filter(l => l.year === cy);
-  const totalNormal = cyLeaves.filter(l=>l.type==='normal'||l.type==='cumulative').reduce((s,l)=>s+l.days,0);
-  const totalSick = cyLeaves.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
-  const halfSalary = cyLeaves.filter(l=>l.type==='half').length;
-
-  document.getElementById('nav-count').textContent = totalFaculty;
-
-  document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-card blue"><span class="stat-icon">👤</span><div class="stat-value">${totalFaculty}</div><div class="stat-label">عدد الموظفين</div></div>
-    <div class="stat-card green"><span class="stat-icon">📅</span><div class="stat-value">${totalNormal}</div><div class="stat-label">أيام إجازات اعتيادية (${cy})</div></div>
-    <div class="stat-card red"><span class="stat-icon">🏥</span><div class="stat-value">${totalSick}</div><div class="stat-label">أيام إجازات مرضية (${cy})</div></div>
-    <div class="stat-card orange"><span class="stat-icon">💊</span><div class="stat-value">${halfSalary}</div><div class="stat-label">حالات نصف راتب</div></div>
-    <div class="stat-card purple"><span class="stat-icon">📦</span><div class="stat-value">${faculty.reduce((s,f)=>s+getCumBalance(f.id),0)}</div><div class="stat-label">إجمالي الرصيد التراكمي</div></div>
-  `;
-
-  const recent = [...leaves].sort((a,b)=>b.id-a.id).slice(0,8);
-  const tbody = document.getElementById('recent-leaves-body');
-  tbody.innerHTML = recent.length ? recent.map((l,i)=>{
-    const f = faculty.find(x=>x.id===l.facultyId);
-    return `<tr>
-      <td>${i+1}</td>
-      <td><strong>${f?f.name:'—'}</strong></td>
-      <td>${leaveTypeBadge(l.type)}</td>
-      <td>${l.fromDate}</td>
-      <td>${l.toDate}</td>
-      <td><strong>${l.days}</strong></td>
-      <td>${l.year}</td>
-    </tr>`;
-  }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة بعد</p></div></td></tr>`;
-}
-
-function leaveTypeBadge(t) {
-  const map = {
-    normal:        '<span class="badge badge-blue">📅 اعتيادية</span>',
-    sick:          '<span class="badge badge-red">🏥 مرضية</span>',
-    cumulative:    '<span class="badge badge-purple">📦 تراكمية</span>',
-    half:          '<span class="badge badge-orange">💰 مرضية - نصف راتب</span>',
-    exception:     '<span class="badge" style="background:rgba(245,158,11,0.12);color:#d97706;">⭐ استثناء</span>',
-    study:         '<span class="badge" style="background:rgba(99,102,241,0.12);color:#6366f1;">📚 دراسية</span>',
-    long:          '<span class="badge badge-gray" style="background:rgba(6,182,212,0.12);color:#0891b2;">🏖️ إجازة طويلة</span>',
-    fiveyear:      '<span class="badge badge-gray" style="background:rgba(16,185,129,0.12);color:#059669;">🗓️ إجازة 5 سنوات</span>',
-    prebirth:      '<span class="badge badge-gray" style="background:rgba(236,72,153,0.12);color:#db2777;">🤰 قبل الوضع</span>',
-    postbirth:     '<span class="badge badge-gray" style="background:rgba(168,85,247,0.12);color:#9333ea;">👶 بعد الوضع</span>',
-    maternity:     '<span class="badge badge-gray" style="background:rgba(245,158,11,0.12);color:#d97706;">🍼 إجازة أمومة</span>',
-    'maternity-ext':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.12);color:#dc2626;">🍼+ تمديد أمومة</span>',
-    'long-cut':    '<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة طويلة</span>',
-    'fiveyear-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة 5 سنوات</span>',
-    'maternity-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة أمومة</span>',
-    'manual-sick-add':'<span class="badge badge-gray" style="background:rgba(16,185,129,0.1);color:#059669;">➕ إضافة مرضية (يدوي)</span>',
-    'manual-sick-sub':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.1);color:#dc2626;">➖ خصم مرضية (يدوي)</span>',
-  };
-  return map[t] || `<span class="badge badge-gray">${t}</span>`;
-}
-
-// ==================== BALANCES ====================
-function getBalance(facultyId, year) {
-  const fac = faculty.find(f=>f.id===facultyId);
-  if (!fac) return {normal:0, sick:0, normalUsed:0, sickUsed:0, normalDays:NORMAL_DAYS};
-  const nd = getNormalDays(facultyId);
-  const fl = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
-
-  // Aعتيادية
-  const normalUsed    = fl.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
-  const normalRefund  = fl.filter(l=>l.type==='normal-refund').reduce((s,l)=>s+l.days,0);
-  const exceptionAdd  = fl.filter(l=>l.type==='exception').reduce((s,l)=>s+l.days,0);
-  // مرضية
-  const sickUsed      = fl.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
-  const sickManualAdd = fl.filter(l=>l.type==='manual-sick-add').reduce((s,l)=>s+l.days,0);
-  const sickManualSub = fl.filter(l=>l.type==='manual-sick-sub').reduce((s,l)=>s+l.days,0);
-
-  const normalBalance = nd + exceptionAdd - normalUsed + normalRefund;
-  const sickBalance   = SICK_DAYS + sickManualAdd - sickManualSub - sickUsed;
-
-  return {
-    normal:     normalBalance,
-    sick:       sickBalance,
-    normalUsed: Math.max(0, normalUsed - normalRefund),
-    sickUsed,
-    normalDays: nd + exceptionAdd,
-  };
-}
-
-function getCumBalance(facultyId) {
-  const fac = faculty.find(f=>f.id===facultyId);
-  if (!fac) return 0;
-  const cumUsed = leaves.filter(l=>l.facultyId===facultyId && l.type==='cumulative').reduce((s,l)=>s+l.days,0);
-  const cumAdded = leaves.filter(l=>l.facultyId===facultyId && l.type==='cum-add').reduce((s,l)=>s+l.days,0);
-  return (fac.initialCumulative || 0) + cumAdded - cumUsed;
-}
-
-// ==================== FACULTY LIST ====================
-function renderFacultyList() {
-  const q = (document.getElementById('faculty-search')?.value||'').trim().toLowerCase();
-  const dept = document.getElementById('faculty-dept-filter')?.value || '';
-  const cy = currentYear();
-
-  let list = faculty.filter(f => {
-    const matchQ = !q || f.name.toLowerCase().includes(q) || (f.dept||'').toLowerCase().includes(q);
-    const matchD = !dept || f.dept === dept;
-    return matchQ && matchD;
+// ==================== SUPABASE HELPERS ====================
+async function sbFetch(path, options = {}) {
+  const res = await fetch(SUPABASE_URL + path, {
+    ...options,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': options._prefer || '',
+      ...(options.headers || {})
+    }
   });
-
-  const grid = document.getElementById('faculty-grid');
-  if (!list.length) {
-    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">👤</div><p>لا يوجد موظفون مسجلون. أضف أول موظف!</p></div>`;
-    return;
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(txt);
   }
-
-  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">${
-    list.map(f => {
-      const bal = getBalance(f.id, cy);
-      const cum = getCumBalance(f.id);
-      const pctN = Math.min(100, Math.round((NORMAL_DAYS-bal.normal)/NORMAL_DAYS*100));
-      const pctS = Math.min(100, Math.round((SICK_DAYS-bal.sick)/SICK_DAYS*100));
-      return `
-      <div class="glass-card" style="cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" onmouseenter="this.style.transform='translateY(-4px)';this.style.boxShadow='0 12px 32px rgba(99,102,241,0.15)'" onmouseleave="this.style.transform='';this.style.boxShadow=''" onclick="openProfile('${f.id}')">
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
-          <div class="avatar">${f.name.charAt(0)}</div>
-          <div>
-            <div style="font-size:16px;font-weight:800;color:#000">${f.name} ${f.gender==='female'?'<span style="font-size:13px;">👩</span>':f.gender==='male'?'<span style="font-size:13px;">👨</span>':''} ${f.type==='instructor'?'<span style="font-size:11px;background:rgba(8,145,178,0.12);color:#0891b2;padding:2px 7px;border-radius:8px;">🎓</span>':''}</div>
-            <div style="font-size:15px;color:#000;margin-top:2px;">${f.dept||'—'} ${f.rank?'• '+f.rank:''}</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;text-align:center;">
-          <div style="background:rgba(37,99,235,0.07);border-radius:10px;padding:10px;">
-            <div style="font-size:18px;font-weight:800;color:var(--accent);">${bal.normal}</div>
-            <div style="font-size:13px;color:#000;font-weight:600;">اعتيادية متبقية</div>
-          </div>
-          <div style="background:rgba(239,68,68,0.07);border-radius:10px;padding:10px;">
-            <div style="font-size:18px;font-weight:800;color:var(--red);">${bal.sick}</div>
-            <div style="font-size:13px;color:#000;font-weight:600;">مرضية متبقية</div>
-          </div>
-          <div style="background:rgba(139,92,246,0.07);border-radius:10px;padding:10px;">
-            <div style="font-size:18px;font-weight:800;color:var(--purple);">${cum}</div>
-            <div style="font-size:13px;color:#000;font-weight:600;">تراكمي</div>
-          </div>
-        </div>
-        <div style="margin-bottom:6px;">
-          <div style="display:flex;justify-content:space-between;font-size:14px;color:#000;margin-bottom:4px;"><span>اعتيادية مستخدمة</span><span>${bal.normalUsed}/${NORMAL_DAYS}</span></div>
-          <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
-        </div>
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:14px;color:#000;margin-bottom:4px;"><span>مرضية مستخدمة</span><span>${bal.sickUsed}/${SICK_DAYS}</span></div>
-          <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
-        </div>
-      </div>`;
-    }).join('')
-  }</div>`;
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : [];
 }
 
-// ==================== PROFILE ====================
-function openProfile(id) {
-  currentFacultyId = id;
-  const fac = faculty.find(f=>f.id===id);
-  if (!fac) return;
-  document.getElementById('profile-name-header').textContent = fac.name;
-  document.getElementById('profile-dept-header').textContent = (fac.dept||'') + (fac.rank?' • '+fac.rank:'') + (fac.empNo?' • رقم التوظيف: '+fac.empNo:'');
-  renderProfile(id);
-  showPage('profile');
+async function sbGetAll(table) {
+  return sbFetch(`/rest/v1/${table}?select=*`);
 }
-
-function renderProfile(id) {
-  const fac = faculty.find(f=>f.id===id);
-  if (!fac) return;
-  const cy = currentYear();
-  const bal = getBalance(id, cy);
-  const cum = getCumBalance(id);
-  const fLeaves = leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
-  const pctN = Math.min(100,Math.round(bal.normalUsed/NORMAL_DAYS*100));
-  const pctS = Math.min(100,Math.round(bal.sickUsed/SICK_DAYS*100));
-  const isFemale = fac.gender === 'female';
-  const isInstructor = fac.type === 'instructor';
-  const normalDaysTotal = getNormalDays(id);
-  const genderBadge = fac.gender ? `<span class="badge ${isFemale?'badge-red':'badge-blue'}" style="margin-top:4px;">${isFemale?'👩 أنثى':'👨 ذكر'}</span>` : '';
-  const typeBadge = isInstructor ? `<span class="badge" style="background:rgba(8,145,178,0.12);color:#0891b2;margin-top:4px;">🎓 تدريسي</span>` : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;margin-top:4px;">👨‍💼 موظف</span>`;
-
-  // Active extended leaves
-  const extTypes = ['long','fiveyear','prebirth','postbirth','maternity','maternity-ext'];
-  const activeExtLeaves = fLeaves.filter(l => extTypes.includes(l.type) && !l.cutDate);
-
-  let extBlocks = '';
-  activeExtLeaves.forEach(lv => {
-    const cfg = EXT_LEAVE_CONFIG[lv.type];
-    if (!cfg) return;
-    const fromD = new Date(lv.fromDate);
-    const toD = new Date(lv.toDate);
-    const today = new Date();
-    const elapsed = Math.max(0, Math.round((today - fromD) / 86400000));
-    const remaining = Math.max(0, Math.round((toD - today) / 86400000));
-    const pct = Math.min(100, Math.round(elapsed / lv.days * 100));
-    const canCut = ['long','fiveyear','maternity','maternity-ext','study'].includes(lv.type);
-    extBlocks += `
-    <div class="leave-block" style="background:linear-gradient(135deg,${cfg.color}15,${cfg.color}08);border:1px solid ${cfg.color}30;">
-      <div class="leave-block-title" style="color:${cfg.color};">${cfg.icon} ${cfg.label} <span style="font-size:12px;background:${cfg.color}20;color:${cfg.color};padding:2px 8px;border-radius:10px;font-weight:700;">نشطة</span></div>
-      <div class="leave-block-val" style="color:${cfg.color};font-size:20px;">${remaining} <span style="font-size:14px;font-weight:500;">يوم متبقي</span></div>
-      <div class="leave-block-sub">${lv.fromDate} → ${lv.toDate} | مضى ${elapsed} يوم</div>
-      <div class="progress-bar-wrap"><div class="progress-bar" style="background:${cfg.color};width:${pct}%;"></div></div>
-      ${canCut ? `<button class="btn btn-outline btn-sm" style="margin-top:10px;color:var(--red);border-color:rgba(239,68,68,0.3);" onclick="openCutLeave('${lv.type}','${lv.id}')">✂️ قطع الإجازة والمباشرة</button>` : ''}
-    </div>`;
-  });
-
-  document.getElementById('profile-content').innerHTML = `
-    <div class="profile-header">
-      <div class="avatar" style="width:72px;height:72px;font-size:30px;">${fac.name.charAt(0)}</div>
-      <div style="flex:1;">
-        <div class="profile-name">${fac.name}</div>
-        <div class="profile-dep">${fac.dept||'—'} ${fac.rank?'• '+fac.rank:''} ${fac.hireYear?'• منذ '+fac.hireYear:''}</div>
-        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-          <span class="badge badge-blue">📅 السنة: ${cy}</span>
-          ${fac.empNo?`<span class="badge badge-gray">🆔 ${fac.empNo}</span>`:''}
-          ${genderBadge}
-          ${typeBadge}
-        </div>
-      </div>
-    </div>
-
-    <div class="leave-blocks">
-      <div class="leave-block">
-        <div class="leave-block-title">🗂️ الإجازة التراكمية</div>
-        <div class="leave-block-val" style="color:var(--purple);">${cum} <span style="font-size:15px;font-weight:500;">يوم</span></div>
-        <div class="leave-block-sub">الرصيد المتراكم من السنوات السابقة</div>
-        <div class="progress-bar-wrap"><div class="progress-bar pb-purple" style="width:${Math.min(100,cum/100*100)}%"></div></div>
-      </div>
-      <div class="leave-block">
-        <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
-        <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
-        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم</div>
-        <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
-      </div>
-      <div class="leave-block">
-        <div class="leave-block-title">🏥 الإجازة المرضية</div>
-        <div class="leave-block-val" style="color:var(--red);">${bal.sick} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
-        <div class="leave-block-sub">مستخدم: ${bal.sickUsed} من ${SICK_DAYS} يوم</div>
-        <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
-      </div>
-      <div class="leave-block" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(249,115,22,0.05));border:1px dashed rgba(245,158,11,0.4);">
-        <div class="leave-block-title">⚡ إغلاق السنة</div>
-        <div class="leave-block-val" style="color:var(--orange);font-size:14px;margin-top:8px;">يتم من الشريط الجانبي</div>
-        <div class="leave-block-sub" style="margin-top:4px;">استخدم زر "إغلاق السنة وترحيل الإجازات" في القائمة الجانبية لترحيل جميع الموظفين دفعة واحدة</div>
-      </div>
-      ${extBlocks}
-    </div>
-
-    <div class="glass-card">
-      <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>سجل الإجازات</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>#</th><th>نوع الإجازة</th><th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th><th>حذف</th>
-          </tr></thead>
-          <tbody>
-            ${fLeaves.filter(l=>l.type!=='normal-refund').length ? fLeaves.filter(l=>l.type!=='normal-refund').map((l,i)=>`
-              <tr class="${l.type==='half'?'half-salary-row':''}" ${l.cutDate?'style="opacity:0.7;"':''}>
-                <td>${i+1}</td>
-                <td>${leaveTypeBadge(l.type)}${l.cutDate?` <span style="font-size:11px;color:#64748b;">(مقطوعة ${l.cutDate})</span>`:''}</td>
-                <td>${l.fromDate}</td>
-                <td>${l.toDate}</td>
-                <td><strong>${l.days}</strong></td>
-                <td>${l.year}</td>
-                <td>${l.notes||'—'}</td>
-                <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
-              </tr>`).join('') :
-              `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة لهذا الموظف</p></div></td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-
-// ==================== YEAR CLOSE ====================
-async function closeYearBalance(id) {
-  const cy = currentYear();
-  const bal = getBalance(id, cy);
-  if (bal.normal <= 0) { showToast('⚠️ لا يوجد رصيد اعتيادي متبقي لنقله', 'orange'); return; }
-  const fac = faculty.find(f => f.id === id);
-  showConfirm(`هل تريد نقل ${bal.normal} يوم متبقية من الإجازات الاعتيادية لسنة ${cy} إلى الرصيد التراكمي؟`, async () => {
-    await addLeaveRecord({ facultyId: id, type: 'cum-add', days: bal.normal, fromDate: cy+'-end', toDate: cy+'-end', year: cy, notes: `نقل رصيد نهاية السنة ${cy}` });
-    await renderProfile(id);
-    renderFacultyList();
-    showToast(`✅ تم نقل ${bal.normal} يوم إلى الرصيد التراكمي`, 'green');
-    await logActivity(`⚡ إغلاق سنة ونقل ${bal.normal} يوم تراكمي - ${fac?.name||''}`, 'orange');
+async function sbUpsert(table, data, onConflict) {
+  return sbFetch(`/rest/v1/${table}?on_conflict=${onConflict}`, {
+    method: 'POST',
+    _prefer: 'resolution=merge-duplicates,return=minimal',
+    body: JSON.stringify(Array.isArray(data) ? data : [data])
   });
 }
+async function sbDelete(table, id, col='id') {
+  return sbFetch(`/rest/v1/${table}?${col}=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+async function sbDeleteWhere(table, col, val) {
+  return sbFetch(`/rest/v1/${table}?${col}=eq.${encodeURIComponent(val)}`, { method: 'DELETE' });
+}
 
-// ==================== ADD FACULTY ====================
-let editingFacultyId = null;
-function openAddFaculty(type) {
-  editingFacultyId = null;
-  const isInstructor = type === 'instructor';
-  document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 إضافة تدريسي جديد' : '👨‍💼 إضافة موظف جديد';
-  ['f-name','f-dept','f-empno','f-hire','f-rank'].forEach(id => document.getElementById(id).value='');
-  document.getElementById('f-cumulative').value='0';
-  document.getElementById('f-gender').value='';
-  document.getElementById('f-type').value = type || 'employee';
-  const badge = document.getElementById('f-type-badge');
-  badge.style.display='block';
-  if (isInstructor) {
-    badge.style.background='rgba(8,145,178,0.1)'; badge.style.color='#0891b2'; badge.style.border='1px solid rgba(8,145,178,0.2)';
-    badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
+// ==================== SYNC QUEUE ====================
+// Every write goes to IDB immediately, AND is queued for Supabase sync.
+// If online → syncs right away. If offline → synced next time online.
+
+async function queueSync(op) {
+  // op = { action:'upsert'|'delete', table, data?, id?, col? }
+  await idbPut('sync_queue', { ...op, ts: Date.now() });
+  if (isOnline) syncPendingQueue();
+}
+
+let _syncing = false;
+async function syncPendingQueue() {
+  if (_syncing || !isOnline) return;
+  _syncing = true;
+  try {
+    const queue = await idbAll('sync_queue');
+    if (!queue.length) { _syncing = false; return; }
+    for (const op of queue) {
+      try {
+        if (op.action === 'upsert') {
+          await sbUpsert(op.table, op.data, op.conflict || 'id');
+        } else if (op.action === 'delete') {
+          await sbDelete(op.table, op.id, op.col || 'id');
+        } else if (op.action === 'deleteWhere') {
+          await sbDeleteWhere(op.table, op.col, op.val);
+        }
+        await idbDelete('sync_queue', op.qid);
+      } catch(e) {
+        console.warn('Sync failed for op', op, e);
+        // leave it in queue to retry later
+      }
+    }
+    updateSyncBadge();
+  } finally {
+    _syncing = false;
+  }
+}
+
+async function updateSyncBadge() {
+  const queue = await idbAll('sync_queue');
+  const badge = document.getElementById('sync-badge');
+  if (!badge) return;
+  if (queue.length > 0) {
+    badge.textContent = `⏳ ${queue.length} معلق`;
+    badge.style.display = 'inline';
+    badge.style.color = '#f59e0b';
   } else {
-    badge.style.background='rgba(99,102,241,0.08)'; badge.style.color='#6366f1'; badge.style.border='1px solid rgba(99,102,241,0.18)';
-    badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
+    badge.textContent = '✅ متزامن';
+    badge.style.display = 'inline';
+    badge.style.color = '#10b981';
+    setTimeout(() => { badge.textContent = ''; badge.style.display='none'; }, 3000);
   }
-  openModal('modal-faculty');
 }
-function openEditFaculty() {
-  const fac = faculty.find(f=>f.id===currentFacultyId);
-  if (!fac) return;
-  editingFacultyId = fac.id;
-  const isInstructor = fac.type === 'instructor';
-  document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 تعديل بيانات التدريسي' : '👨‍💼 تعديل بيانات الموظف';
-  document.getElementById('f-name').value = fac.name||'';
-  document.getElementById('f-dept').value = fac.dept||'';
-  document.getElementById('f-empno').value = fac.empNo||'';
-  document.getElementById('f-hire').value = fac.hireYear||'';
-  document.getElementById('f-rank').value = fac.rank||'';
-  document.getElementById('f-cumulative').value = fac.initialCumulative||0;
-  document.getElementById('f-gender').value = fac.gender||'';
-  document.getElementById('f-type').value = fac.type||'employee';
-  const badge = document.getElementById('f-type-badge');
-  badge.style.display='block';
-  if (isInstructor) {
-    badge.style.background='rgba(8,145,178,0.1)'; badge.style.color='#0891b2'; badge.style.border='1px solid rgba(8,145,178,0.2)';
-    badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
-  } else {
-    badge.style.background='rgba(99,102,241,0.08)'; badge.style.color='#6366f1'; badge.style.border='1px solid rgba(99,102,241,0.18)';
-    badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
-  }
-  openModal('modal-faculty');
-}
-async function saveFaculty() {
-  const wasEditing = !!editingFacultyId;
-  const name = document.getElementById('f-name').value.trim();
-  const dept = document.getElementById('f-dept').value.trim();
-  const gender = document.getElementById('f-gender').value;
-  const type = document.getElementById('f-type').value || 'employee';
-  if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
-  if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
-  const obj = {
-    id: editingFacultyId || Date.now().toString(),
-    name, dept, gender, type,
-    empNo: document.getElementById('f-empno').value.trim(),
-    rank: document.getElementById('f-rank').value.trim(),
-    hireYear: document.getElementById('f-hire').value,
-    initialCumulative: parseInt(document.getElementById('f-cumulative').value)||0,
-  };
-  await dbPut('faculty', obj);
-  faculty = await dbAll('faculty');
-  closeModal('modal-faculty');
-  renderFacultyList();
-  populateFilters();
-  renderDashboard();
-  const typeLabel = type==='instructor'?'التدريسي':'الموظف';
-  showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
-  if (wasEditing && currentFacultyId === editingFacultyId) {
-    document.getElementById('profile-name-header').textContent = obj.name;
-    renderProfile(obj.id);
-  }
-  const genderLabel = gender==='female'?'أنثى':'ذكر';
-  await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
-}
-function confirmDeleteFaculty() {
-  const fac = faculty.find(f=>f.id===currentFacultyId);
-  const facName = fac?.name || '';
-  showConfirm(`هل أنت متأكد من حذف الموظف "${facName}" وجميع سجلات إجازاته؟`, async () => {
-    await dbDelete('faculty', currentFacultyId);
-    const fLeaves = leaves.filter(l=>l.facultyId===currentFacultyId);
-    for (const l of fLeaves) await dbDelete('leaves', l.id);
-    faculty = await dbAll('faculty');
-    leaves = await dbAll('leaves');
-    showPage('faculty');
-    renderFacultyList();
+
+// ==================== PULL FROM SUPABASE ====================
+// On startup and every 30s when online: pull latest data from Supabase into IDB
+async function pullFromSupabase() {
+  if (!isOnline) return;
+  try {
+    const [sbFaculty, sbLeaves] = await Promise.all([
+      sbGetAll('faculty'),
+      sbGetAll('leaves')
+    ]);
+    // Write all remote records into local IDB
+    for (const f of sbFaculty) await idbPut('faculty', f);
+    for (const l of sbLeaves)  await idbPut('leaves', l);
+
+    // Remove local records that no longer exist remotely
+    const localFaculty = await idbAll('faculty');
+    const remoteIds = new Set(sbFaculty.map(f => f.id));
+    for (const f of localFaculty) {
+      if (!remoteIds.has(f.id)) await idbDelete('faculty', f.id);
+    }
+    const localLeaves = await idbAll('leaves');
+    const remoteLeaveIds = new Set(sbLeaves.map(l => l.id));
+    for (const l of localLeaves) {
+      if (!remoteLeaveIds.has(l.id)) await idbDelete('leaves', l.id);
+    }
+
+    // Reload in-memory state
+    faculty = await idbAll('faculty');
+    leaves  = await idbAll('leaves');
     renderDashboard();
+    renderFacultyList();
     populateFilters();
-    showToast('🗑️ تم حذف الموظف', 'red');
-    await logActivity(`🗑️ حذف الموظف: ${facName}`, 'red');
+    if (currentFacultyId) renderProfile(currentFacultyId);
+  } catch(e) {
+    console.warn('pullFromSupabase failed:', e);
+  }
+}
+
+// ==================== COMBINED DB LAYER ====================
+// These are the functions the app calls — they write to IDB always,
+// queue for Supabase sync, and return immediately so UI never blocks.
+
+async function dbAll(store) {
+  return idbAll(store);
+}
+
+async function dbPut(store, obj) {
+  await idbPut(store, obj);
+  if (['faculty','leaves','accounts','settings'].includes(store)) {
+    const conflictCol = store === 'accounts' ? 'username' : store === 'settings' ? 'key' : 'id';
+    await queueSync({ action:'upsert', table: store, data: obj, conflict: conflictCol });
+  }
+}
+
+async function dbDelete(store, id) {
+  await idbDelete(store, id);
+  if (['faculty','leaves'].includes(store)) {
+    await queueSync({ action:'delete', table: store, id, col: 'id' });
+  }
+}
+
+function dbGetSetting(key) {
+  return new Promise(res => {
+    idbGet('settings', key).then(r => res(r ? r.value : null));
   });
 }
-
-// ==================== ADD LEAVE ====================
-function openAddLeave(type) {
-  currentLeaveType = type;
-  document.getElementById('leave-modal-title').textContent = type === 'normal' ? '📅 إضافة إجازة اعتيادية' : '🏥 إضافة إجازة مرضية';
-  document.getElementById('l-from').value = '';
-  document.getElementById('l-days').value = '';
-  document.getElementById('l-to').value = '';
-  document.getElementById('l-notes').value = '';
-  document.getElementById('leave-info-box').style.display='none';
-
-  const ySelect = document.getElementById('l-year');
-  const years = getYearsList();
-  const cy = currentYear();
-  ySelect.innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-
-  openModal('modal-leave');
+async function dbSetSetting(key, value) {
+  await dbPut('settings', { key, value });
 }
 
-function calcLeaveEnd() {
-  const from = document.getElementById('l-from').value;
-  const days = parseInt(document.getElementById('l-days').value);
-  if (from && days > 0) {
-    const d = new Date(from);
-    d.setDate(d.getDate() + days - 1);
-    document.getElementById('l-to').value = d.toISOString().split('T')[0];
-    updateLeaveInfo();
-  }
-}
-function calcLeaveDays() { calcLeaveEnd(); }
-
-function updateLeaveInfo() {
-  if (!currentFacultyId) return;
-  const year = document.getElementById('l-year').value;
-  const days = parseInt(document.getElementById('l-days').value)||0;
-  const bal = getBalance(currentFacultyId, year);
-  const cum = getCumBalance(currentFacultyId);
-  const box = document.getElementById('leave-info-box');
-  if (!days) { box.style.display='none'; return; }
-
-  if (currentLeaveType === 'normal') {
-    const rem = bal.normal;
-    const color = days > rem ? 'var(--orange)' : 'var(--green)';
-    box.style.display='block';
-    box.innerHTML = `<span style="color:${color};font-weight:700;">📊 الرصيد الاعتيادي المتبقي: ${rem} يوم | الأيام المطلوبة: ${days}</span>${days>rem?`<br><span style="color:var(--orange)">⚠️ سيُقطع ${days-rem} يوم من الرصيد التراكمي (${cum} يوم)</span>`:''}`;
-  } else {
-    const rem = bal.sick;
-    const color = days > rem ? 'var(--orange)' : 'var(--green)';
-    box.style.display='block';
-    box.innerHTML = `<span style="color:${color};font-weight:700;">📊 الرصيد المرضي المتبقي: ${rem} يوم | الأيام المطلوبة: ${days}</span>${days>rem?`<br><span style="color:var(--red)">⚠️ ${days-rem} يوم ستكون بنصف الراتب</span>`:''}`;
-  }
-}
-
-async function saveLeave() {
-  const from = document.getElementById('l-from').value;
-  const days = parseInt(document.getElementById('l-days').value);
-  const year = document.getElementById('l-year').value;
-  const notes = document.getElementById('l-notes').value.trim();
-
-  if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
-
-  const bal = getBalance(currentFacultyId, year);
-  const cum = getCumBalance(currentFacultyId);
-  const endDate = document.getElementById('l-to').value;
-
-  if (currentLeaveType === 'normal') {
-    if (bal.normal <= 0) {
-      showAlert('⚠️', 'انتهى الرصيد الاعتيادي', `هذا الموظف لا يمتلك رصيداً اعتيادياً لسنة ${year}.\nهل تريد قطع ${days} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async (yes) => {
-        if (!yes) return;
-        if (days > cum) { showToast('❌ الرصيد التراكمي غير كافٍ', 'red'); return; }
-        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days, fromDate:from, toDate:endDate, year, notes});
-        afterSaveLeave();
-      });
-      return;
-    }
-    if (days > bal.normal) {
-      const overflow = days - bal.normal;
-      showAlert('⚠️', 'الرصيد الاعتيادي غير كافٍ', `يمتلك هذا الموظف ${bal.normal} يوم اعتيادي متبقٍ.\nهل تريد قطع ${overflow} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async (yes) => {
-        if (!yes) return;
-        if (overflow > cum) { showToast('❌ الرصيد التراكمي غير كافٍ لتغطية الفرق', 'red'); return; }
-        await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days:bal.normal, fromDate:from, toDate:endDate, year, notes});
-        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days:overflow, fromDate:from, toDate:endDate, year, notes:'امتداد من التراكمي'});
-        afterSaveLeave();
-      });
-      return;
-    }
-    await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days, fromDate:from, toDate:endDate, year, notes});
-    afterSaveLeave();
-
-  } else {
-    if (bal.sick <= 0) {
-      showAlert('🏥', 'انتهى الرصيد المرضي', `هذا الموظف استنفد رصيده المرضي لسنة ${year}.\nهل تريد تفعيل الإجازة بنصف الراتب؟`, async (yes) => {
-        if (!yes) return;
-        await addLeaveRecord({facultyId:currentFacultyId, type:'half', days, fromDate:from, toDate:endDate, year, notes: `إجازة مرضية بنصف الراتب - ${notes||''}`});
-        showToast('⚠️ تم تسجيل الإجازة المرضية بنصف الراتب', 'orange');
-        afterSaveLeave(false);
-      });
-      return;
-    }
-    if (days > bal.sick) {
-      const overflow = days - bal.sick;
-      showAlert('🏥', 'الرصيد المرضي غير كافٍ', `يمتلك ${bal.sick} يوم مرضي متبقٍ.\nهل تريد تسجيل ${overflow} يوم بنصف الراتب؟`, async (yes) => {
-        if (!yes) return;
-        await addLeaveRecord({facultyId:currentFacultyId, type:'sick', days:bal.sick, fromDate:from, toDate:endDate, year, notes});
-        await addLeaveRecord({facultyId:currentFacultyId, type:'half', days:overflow, fromDate:from, toDate:endDate, year, notes:'نصف راتب - امتداد مرضي'});
-        showToast('⚠️ تم تسجيل جزء بنصف الراتب', 'orange');
-        afterSaveLeave(false);
-      });
-      return;
-    }
-    await addLeaveRecord({facultyId:currentFacultyId, type:'sick', days, fromDate:from, toDate:endDate, year, notes});
-    afterSaveLeave();
-  }
-}
-
-async function afterSaveLeave(showSuccessToast=true) {
-  closeModal('modal-leave');
-  renderProfile(currentFacultyId);
-  renderFacultyList();
-  renderDashboard();
-  if (showSuccessToast) showToast('✅ تم تسجيل الإجازة بنجاح', 'green');
-  const typeMap = {normal:'اعتيادية', sick:'مرضية', cumulative:'تراكمية', half:'مرضية - نصف راتب', long:'طويلة', fiveyear:'5 سنوات', prebirth:'قبل الوضع', postbirth:'بعد الوضع', maternity:'أمومة', 'maternity-ext':'تمديد أمومة'};
-  const typeName = typeMap[currentLeaveType] || currentLeaveType;
-  const fac = faculty.find(f => f.id === currentFacultyId);
-  await logActivity(`📅 تسجيل إجازة ${typeName} - ${fac?.name||''}`, 'blue');
-}
-
-async function addLeaveRecord(data) {
-  const rec = { id: Date.now().toString() + Math.random().toString(36).slice(2), ...data };
-  await dbPut('leaves', rec);
-  leaves = await dbAll('leaves');
-  return rec;
-}
-
-async function deleteLeave(id) {
-  const lv = leaves.find(l => l.id === id);
-  const fac = faculty.find(f => f.id === lv?.facultyId);
-  showConfirm('هل تريد حذف هذه الإجازة؟', async () => {
-    await dbDelete('leaves', id);
-    leaves = await dbAll('leaves');
-    renderProfile(currentFacultyId);
-    renderFacultyList();
-    renderDashboard();
-    showToast('🗑️ تم حذف الإجازة', 'red');
-    await logActivity(`🗑️ حذف إجازة - ${fac?.name||''}`, 'red');
-  });
-}
-
-// ==================== LEAVES LOG ====================
-function renderLeavesLog() {
-  const fFilter = document.getElementById('log-faculty-filter')?.value||'';
-  const tFilter = document.getElementById('log-type-filter')?.value||'';
-  const yFilter = document.getElementById('log-year-filter')?.value||'';
-  const fromF = document.getElementById('log-from-filter')?.value||'';
-  const toF = document.getElementById('log-to-filter')?.value||'';
-
-  let list = leaves.filter(l => {
-    if (fFilter && l.facultyId !== fFilter) return false;
-    if (tFilter && l.type !== tFilter) return false;
-    if (yFilter && l.year !== yFilter) return false;
-    if (fromF && l.fromDate < fromF) return false;
-    if (toF && l.fromDate > toF) return false;
-    if (l.type === 'cum-add') return false;
-    if (l.type === 'normal-refund') return false;
-    if (l.type === 'manual-sick-add') return false;
-    if (l.type === 'manual-sick-sub') return false;
-    if (l.autoDeduct) return false;
-    return true;
-  }).sort((a,b) => b.id.localeCompare(a.id));
-
-  const tbody = document.getElementById('leaves-log-body');
-  const empty = document.getElementById('log-empty');
-
-  if (!list.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
-  empty.style.display = 'none';
-  tbody.innerHTML = list.map((l,i) => {
-    const f = faculty.find(x=>x.id===l.facultyId);
-    return `<tr class="${l.type==='half'?'half-salary-row':''}">
-      <td>${i+1}</td>
-      <td><strong>${f?f.name:'—'}</strong></td>
-      <td>${f?f.dept||'—':'—'}</td>
-      <td>${leaveTypeBadge(l.type)}</td>
-      <td>${l.fromDate}</td>
-      <td>${l.toDate}</td>
-      <td><strong>${l.days}</strong></td>
-      <td>${l.year}</td>
-      <td>${l.notes||'—'}</td>
-      <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
-    </tr>`;
-  }).join('');
-}
-
-function resetLogFilters() {
-  ['log-faculty-filter','log-type-filter','log-year-filter','log-from-filter','log-to-filter'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-  renderLeavesLog();
-}
-
-// ==================== STATISTICS ====================
-function renderStats() {
-  const fFilter = document.getElementById('stats-faculty-filter')?.value||'';
-  const dFilter = document.getElementById('stats-dept-filter')?.value||'';
-  const yFilter = document.getElementById('stats-year-filter')?.value||'';
-  const cy = currentYear();
-
-  let list = faculty.filter(f => {
-    if (fFilter && f.id !== fFilter) return false;
-    if (dFilter && f.dept !== dFilter) return false;
-    return true;
-  });
-
-  const container = document.getElementById('stats-content');
-  if (!list.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>لا توجد بيانات</p></div>'; return; }
-
-  const year = yFilter || cy;
-  const rows = list.map(f => {
-    const bal = getBalance(f.id, year);
-    const cum = getCumBalance(f.id);
-    const fLeaves = leaves.filter(l=>l.facultyId===f.id&&(yFilter?l.year===year:true)&&l.type!=='cum-add');
-    return { f, bal, cum, fLeaves, year };
-  });
-
-  const totNorm = rows.reduce((s,r)=>s+r.bal.normalUsed,0);
-  const totSick = rows.reduce((s,r)=>s+r.bal.sickUsed,0);
-  const totHalf = rows.reduce((s,r)=>s+r.fLeaves.filter(l=>l.type==='half').reduce((a,l)=>a+l.days,0),0);
-  const totCum = rows.reduce((s,r)=>s+r.cum,0);
-
-  container.innerHTML = `
-    <div class="stats-grid" style="margin-bottom:20px;">
-      <div class="stat-card blue"><div class="stat-value">${rows.length}</div><div class="stat-label">عدد الموظفين</div></div>
-      <div class="stat-card green"><div class="stat-value">${totNorm}</div><div class="stat-label">إجمالي أيام اعتيادية مستخدمة</div></div>
-      <div class="stat-card red"><div class="stat-value">${totSick}</div><div class="stat-label">إجمالي أيام مرضية مستخدمة</div></div>
-      <div class="stat-card orange"><div class="stat-value">${totHalf}</div><div class="stat-label">أيام نصف راتب</div></div>
-      <div class="stat-card purple"><div class="stat-value">${totCum}</div><div class="stat-label">إجمالي الرصيد التراكمي</div></div>
-    </div>
-    <div class="glass-card">
-      <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>تفصيل لكل موظف - ${year}</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>#</th><th>الاسم</th><th>القسم</th><th>العنوان الوظيفي</th>
-            <th>اعتيادية مستخدمة</th><th>اعتيادية متبقية</th>
-            <th>مرضية مستخدمة</th><th>مرضية متبقية</th>
-            <th>تراكمي</th><th>نصف راتب</th><th>إجمالي الإجازات</th>
-          </tr></thead>
-          <tbody>
-            ${rows.map((r,i)=>{
-              const halfDays = r.fLeaves.filter(l=>l.type==='half').reduce((a,l)=>a+l.days,0);
-              const total = r.fLeaves.reduce((a,l)=>a+l.days,0);
-              return `<tr>
-                <td>${i+1}</td>
-                <td><strong>${r.f.name}</strong></td>
-                <td>${r.f.dept||'—'}</td>
-                <td>${r.f.rank||'—'}</td>
-                <td><span class="badge badge-blue">${r.bal.normalUsed}</span></td>
-                <td><span class="badge badge-green">${r.bal.normal}</span></td>
-                <td><span class="badge badge-red">${r.bal.sickUsed}</span></td>
-                <td><span class="badge badge-gray">${r.bal.sick}</span></td>
-                <td><span class="badge badge-purple">${r.cum}</span></td>
-                <td>${halfDays>0?`<span class="badge badge-orange">${halfDays}</span>`:'—'}</td>
-                <td><strong>${total}</strong></td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-
-// ==================== EXPORT EXCEL ====================
-function exportExcel() {
-  const fFilter = document.getElementById('log-faculty-filter')?.value||'';
-  const tFilter = document.getElementById('log-type-filter')?.value||'';
-  const yFilter = document.getElementById('log-year-filter')?.value||'';
-  const fromF = document.getElementById('log-from-filter')?.value||'';
-  const toF = document.getElementById('log-to-filter')?.value||'';
-  const typeMap = {
-    normal:          'اعتيادية',
-    sick:            'مرضية',
-    cumulative:      'تراكمية',
-    half:            'مرضية - نصف راتب',
-    exception:       'استثناء',
-    study:           'إجازة دراسية',
-    long:            'إجازة طويلة',
-    fiveyear:        'إجازة 5 سنوات',
-    prebirth:        'إجازة قبل الوضع',
-    postbirth:       'إجازة بعد الوضع',
-    maternity:       'إجازة أمومة',
-    'maternity-ext': 'تمديد إجازة أمومة',
-  };
-
-  const filtered = leaves.filter(l=>{
-    if (l.type==='cum-add') return false;
-    if (l.autoDeduct) return false;
-    if (l.type==='normal-refund') return false;
-    if (l.type==='manual-sick-add') return false;
-    if (l.type==='manual-sick-sub') return false;
-    if (fFilter && l.facultyId!==fFilter) return false;
-    if (tFilter && l.type!==tFilter) return false;
-    if (yFilter && l.year!==yFilter) return false;
-    if (fromF && l.fromDate < fromF) return false;
-    if (toF && l.fromDate > toF) return false;
-    return true;
-  }).sort((a,b)=>b.id.localeCompare(a.id));
-
-  const rows = filtered.map((l,i)=>{
-    const f = faculty.find(x=>x.id===l.facultyId);
-    const typeName  = typeMap[l.type] || l.type;
-    const typeColors = {
-      normal:'#059669', sick:'#dc2626', half:'#d97706', cumulative:'#7c3aed',
-      exception:'#d97706', study:'#6366f1', long:'#0891b2', fiveyear:'#059669',
-      prebirth:'#db2777', postbirth:'#9333ea', maternity:'#d97706', 'maternity-ext':'#dc2626',
-    };
-    const typeBgs = {
-      normal:'#dcfce7', sick:'#fee2e2', half:'#fef3c7', cumulative:'#ede9fe',
-      exception:'#fef3c7', study:'#eef2ff', long:'#e0f2fe', fiveyear:'#dcfce7',
-      prebirth:'#fce7f3', postbirth:'#f5f3ff', maternity:'#fef3c7', 'maternity-ext':'#fee2e2',
-    };
-    const typeColor = typeColors[l.type] || '#475569';
-    const rowColor  = typeBgs[l.type]   || '#f8fafc';
-    return `<tr style="background:${rowColor}">
-      <td style="padding:9px 14px;text-align:center;font-weight:700;color:#64748b;border:1px solid #e2e8f0">${i+1}</td>
-      <td style="padding:9px 14px;font-weight:700;color:#1e293b;border:1px solid #e2e8f0">${f?.name||'—'}</td>
-      <td style="padding:9px 14px;color:#334155;border:1px solid #e2e8f0">${f?.dept||'—'}</td>
-      <td style="padding:9px 14px;color:#334155;border:1px solid #e2e8f0">${f?.rank||'—'}</td>
-      <td style="padding:9px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:${typeColor}20;color:${typeColor};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700">${typeName}</span></td>
-      <td style="padding:9px 14px;text-align:center;color:#334155;border:1px solid #e2e8f0">${l.fromDate}</td>
-      <td style="padding:9px 14px;text-align:center;color:#334155;border:1px solid #e2e8f0">${l.toDate}</td>
-      <td style="padding:9px 14px;text-align:center;font-weight:800;color:#2563eb;border:1px solid #e2e8f0">${l.days}</td>
-      <td style="padding:9px 14px;text-align:center;color:#334155;border:1px solid #e2e8f0">${l.year}</td>
-      <td style="padding:9px 14px;color:#64748b;border:1px solid #e2e8f0">${l.notes||'—'}</td>
-    </tr>`;
-  }).join('');
-
-  const totalDays = filtered.reduce((s,l)=>s+l.days,0);
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-  <head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;direction:rtl;}table{border-collapse:collapse;width:100%;}</style></head><body>
-  <div style="font-size:18px;font-weight:bold;color:#1e293b;margin-bottom:4px;">📋 سجل إجازات الموظفين</div>
-  <div style="font-size:13px;color:#64748b;margin-bottom:20px;">تاريخ التصدير: ${new Date().toLocaleDateString('ar-IQ')} | إجمالي السجلات: ${filtered.length} | إجمالي الأيام: ${totalDays}</div>
-  <table>
-    <thead><tr style="background:linear-gradient(135deg,#6366f1,#2563eb)">
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">#</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">اسم الموظف</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">القسم</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">العنوان الوظيفي</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">نوع الإجازة</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">من تاريخ</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">إلى تاريخ</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">الأيام</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">السنة الدراسية</th>
-      <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">ملاحظات</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-    <tfoot><tr style="background:#f1f5f9">
-      <td colspan="7" style="padding:10px 14px;font-weight:bold;color:#1e293b;border:1px solid #e2e8f0">الإجمالي</td>
-      <td style="padding:10px 14px;text-align:center;font-weight:800;color:#2563eb;font-size:16px;border:1px solid #e2e8f0">${totalDays}</td>
-      <td colspan="2" style="border:1px solid #e2e8f0"></td>
-    </tr></tfoot>
-  </table></body></html>`;
-
-  const blob = new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
-  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='سجل_الإجازات.xls'; a.click();
-  showToast('📊 تم تصدير ملف Excel بنجاح', 'green');
-  logActivity('📊 تصدير سجل الإجازات Excel', 'blue');
-}
-
-function exportStatsExcel() {
-  const cy = currentYear();
-  const yFilter = document.getElementById('stats-year-filter')?.value || cy;
-
-  const rows = faculty.map((f,i)=>{
-    const bal = getBalance(f.id, yFilter);
-    const cum = getCumBalance(f.id);
-    const halfDays = leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0);
-    const pctN = Math.round(bal.normalUsed/36*100);
-    const pctS = Math.round(bal.sickUsed/30*100);
-    return `<tr style="background:${i%2===0?'#ffffff':'#f8fafc'}">
-      <td style="padding:10px 14px;text-align:center;font-weight:700;color:#64748b;border:1px solid #e2e8f0">${i+1}</td>
-      <td style="padding:10px 14px;font-weight:800;color:#1e293b;border:1px solid #e2e8f0">${f.name}</td>
-      <td style="padding:10px 14px;color:#334155;border:1px solid #e2e8f0">${f.dept||'—'}</td>
-      <td style="padding:10px 14px;color:#334155;border:1px solid #e2e8f0">${f.rank||'—'}</td>
-      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:10px;font-weight:700">${bal.normalUsed}</span></td>
-      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#dcfce7;color:#15803d;padding:3px 10px;border-radius:10px;font-weight:700">${bal.normal}</span></td>
-      <td style="padding:10px 14px;text-align:center;color:#64748b;border:1px solid #e2e8f0">${pctN}%</td>
-      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:10px;font-weight:700">${bal.sickUsed}</span></td>
-      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#f1f5f9;color:#475569;padding:3px 10px;border-radius:10px;font-weight:700">${bal.sick}</span></td>
-      <td style="padding:10px 14px;text-align:center;color:#64748b;border:1px solid #e2e8f0">${pctS}%</td>
-      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0"><span style="background:#ede9fe;color:#7c3aed;padding:3px 10px;border-radius:10px;font-weight:700">${cum}</span></td>
-      <td style="padding:10px 14px;text-align:center;border:1px solid #e2e8f0">${halfDays>0?`<span style="background:#fef3c7;color:#d97706;padding:3px 10px;border-radius:10px;font-weight:700">${halfDays}</span>`:'—'}</td>
-    </tr>`;
-  }).join('');
-
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-  <head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;direction:rtl;}table{border-collapse:collapse;width:100%;}</style></head><body>
-  <div style="font-size:18px;font-weight:bold;color:#1e293b;margin-bottom:4px;">📊 إحصائيات إجازات الموظفين</div>
-  <div style="font-size:13px;color:#64748b;margin-bottom:20px;">السنة الدراسية: ${yFilter} | تاريخ التصدير: ${new Date().toLocaleDateString('ar-IQ')} | عدد الموظفين: ${faculty.length}</div>
-  <table>
-    <thead>
-      <tr style="background:#6366f1">
-        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center">#</th>
-        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">الاسم</th>
-        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">القسم</th>
-        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5">العنوان الوظيفي</th>
-        <th colspan="3" style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#2563eb">الإجازة الاعتيادية (36 يوم)</th>
-        <th colspan="3" style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#dc2626">الإجازة المرضية (30 يوم)</th>
-        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#7c3aed">تراكمي</th>
-        <th style="padding:11px 14px;color:#fff;border:1px solid #4f46e5;text-align:center;background:#d97706">نصف راتب</th>
-      </tr>
-      <tr style="background:#f1f5f9">
-        <th colspan="4" style="border:1px solid #e2e8f0;padding:7px 14px;color:#64748b;font-size:12px;"></th>
-        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">مستخدم</th>
-        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">متبقي</th>
-        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">%</th>
-        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">مستخدم</th>
-        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">متبقي</th>
-        <th style="padding:7px 14px;color:#64748b;font-size:12px;border:1px solid #e2e8f0;text-align:center">%</th>
-        <th colspan="2" style="border:1px solid #e2e8f0;padding:7px 14px"></th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table></body></html>`;
-
-  const blob = new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'});
-  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`إحصائيات_${yFilter}.xls`; a.click();
-  showToast('📊 تم تصدير ملف Excel بنجاح', 'green');
-}
-
-function exportPDF() {
-  const fFilter = document.getElementById('log-faculty-filter')?.value||'';
-  const tFilter = document.getElementById('log-type-filter')?.value||'';
-  const yFilter = document.getElementById('log-year-filter')?.value||'';
-  const typeMap = {
-    normal:          'اعتيادية',
-    sick:            'مرضية',
-    cumulative:      'تراكمية',
-    half:            'مرضية - نصف راتب',
-    exception:       'استثناء',
-    study:           'إجازة دراسية',
-    long:            'إجازة طويلة',
-    fiveyear:        'إجازة 5 سنوات',
-    prebirth:        'إجازة قبل الوضع',
-    postbirth:       'إجازة بعد الوضع',
-    maternity:       'إجازة أمومة',
-    'maternity-ext': 'تمديد إجازة أمومة',
-  };
-
-  const filtered = leaves.filter(l=>{
-    if (l.type==='cum-add') return false;
-    if (l.autoDeduct) return false;
-    if (l.type==='normal-refund') return false;
-    if (l.type==='manual-sick-add') return false;
-    if (l.type==='manual-sick-sub') return false;
-    if (fFilter && l.facultyId!==fFilter) return false;
-    if (tFilter && l.type!==tFilter) return false;
-    if (yFilter && l.year!==yFilter) return false;
-    return true;
-  }).sort((a,b)=>b.id.localeCompare(a.id));
-
-  const totalDays = filtered.reduce((s,l)=>s+l.days,0);
-  const rows = filtered.map((l,i)=>{
-    const f = faculty.find(x=>x.id===l.facultyId);
-    const tName = typeMap[l.type] || l.type;
-    const tColors = {
-      normal:'#059669', sick:'#dc2626', half:'#d97706', cumulative:'#7c3aed',
-      exception:'#d97706', study:'#6366f1', long:'#0891b2', fiveyear:'#059669',
-      prebirth:'#db2777', postbirth:'#9333ea', maternity:'#d97706', 'maternity-ext':'#dc2626',
-    };
-    const tBgs = {
-      normal:'#dcfce7', sick:'#fee2e2', half:'#fef3c7', cumulative:'#ede9fe',
-      exception:'#fef3c7', study:'#eef2ff', long:'#e0f2fe', fiveyear:'#dcfce7',
-      prebirth:'#fce7f3', postbirth:'#f5f3ff', maternity:'#fef3c7', 'maternity-ext':'#fee2e2',
-    };
-    const tColor = tColors[l.type] || '#475569';
-    const tBg    = tBgs[l.type]    || '#f8fafc';
-    return `<tr style="background:${i%2===0?'#fff':'#f8fafc'}">
-      <td>${i+1}</td>
-      <td><strong>${f?.name||'—'}</strong></td>
-      <td>${f?.dept||'—'}</td>
-      <td><span style="background:${tBg};color:${tColor};padding:2px 9px;border-radius:10px;font-size:12px;font-weight:700">${tName}</span></td>
-      <td>${l.fromDate}</td><td>${l.toDate}</td>
-      <td style="text-align:center;font-weight:800;color:#2563eb">${l.days}</td>
-      <td>${l.year}</td>
-      <td style="color:#64748b">${l.notes||'—'}</td>
-    </tr>`;
-  }).join('');
-
-  openPrintWindow('📋 سجل إجازات الموظفين', yFilter||'جميع السنوات', filtered.length, totalDays,
-    `<thead><tr>
-      <th>#</th><th>الموظف</th><th>القسم</th><th>نوع الإجازة</th>
-      <th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th>
-    </tr></thead><tbody>${rows}</tbody>
-    <tfoot><tr style="background:#f1f5f9"><td colspan="6" style="font-weight:bold;padding:10px 14px">الإجمالي</td>
-    <td style="font-weight:900;color:#2563eb;font-size:18px;text-align:center;padding:10px 14px">${totalDays}</td>
-    <td colspan="2"></td></tr></tfoot>`
-  );
-  logActivity('📄 تصدير سجل الإجازات PDF', 'blue');
-}
-
-function exportStatsPDF() {
-  const cy = currentYear();
-  const yFilter = document.getElementById('stats-year-filter')?.value || cy;
-
-  const rows = faculty.map((f,i)=>{
-    const bal = getBalance(f.id, yFilter);
-    const cum = getCumBalance(f.id);
-    const halfDays = leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0);
-    const pctN = Math.round(bal.normalUsed/36*100);
-    const pctS = Math.round(bal.sickUsed/30*100);
-    const barN = `<div style="background:#e2e8f0;border-radius:4px;height:6px;width:80px;display:inline-block;vertical-align:middle;margin-right:6px"><div style="background:#2563eb;height:6px;border-radius:4px;width:${Math.min(100,pctN)}%"></div></div>`;
-    const barS = `<div style="background:#e2e8f0;border-radius:4px;height:6px;width:80px;display:inline-block;vertical-align:middle;margin-right:6px"><div style="background:#dc2626;height:6px;border-radius:4px;width:${Math.min(100,pctS)}%"></div></div>`;
-    return `<tr style="background:${i%2===0?'#fff':'#f8fafc'}">
-      <td>${i+1}</td>
-      <td><strong>${f.name}</strong></td>
-      <td>${f.dept||'—'}</td>
-      <td>${f.rank||'—'}</td>
-      <td><span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:8px;font-weight:700">${bal.normalUsed}</span></td>
-      <td><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:8px;font-weight:700">${bal.normal}</span> ${barN}${pctN}%</td>
-      <td><span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:8px;font-weight:700">${bal.sickUsed}</span></td>
-      <td><span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:8px;font-weight:700">${bal.sick}</span> ${barS}${pctS}%</td>
-      <td><span style="background:#ede9fe;color:#7c3aed;padding:2px 8px;border-radius:8px;font-weight:700">${cum}</span></td>
-      <td>${halfDays>0?`<span style="background:#fef3c7;color:#d97706;padding:2px 8px;border-radius:8px;font-weight:700">${halfDays}</span>`:'—'}</td>
-    </tr>`;
-  }).join('');
-
-  openPrintWindow('📊 إحصائيات إجازات الموظفين', yFilter, faculty.length, null,
-    `<thead><tr>
-      <th>#</th><th>الاسم</th><th>القسم</th><th>العنوان الوظيفي</th>
-      <th>اعتيادية مستخدمة</th><th>اعتيادية متبقية</th>
-      <th>مرضية مستخدمة</th><th>مرضية متبقية</th>
-      <th>تراكمي</th><th>نصف راتب</th>
-    </tr></thead><tbody>${rows}</tbody>`
-  );
-}
-
-function openPrintWindow(title, subtitle, count, totalDays, tableBody) {
-  const win = window.open('','_blank');
-  win.document.write(`<!DOCTYPE html>
-<html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${title}</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-  *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:'Cairo',Arial,sans-serif;direction:rtl;background:#f8fafc;color:#1e293b;padding:0;}
-  .header{background:linear-gradient(135deg,#6366f1,#2563eb);color:#fff;padding:28px 36px;}
-  .header h1{font-size:22px;font-weight:800;margin-bottom:6px;}
-  .header-meta{display:flex;gap:24px;font-size:13px;opacity:0.85;flex-wrap:wrap;}
-  .content{padding:24px 36px;}
-  .print-btn{background:#fff;color:#6366f1;border:none;padding:10px 22px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
-  table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 20px rgba(99,102,241,0.1);}
-  thead tr{background:linear-gradient(135deg,#6366f1,#2563eb);}
-  thead th{padding:12px 14px;color:#fff;font-size:12px;font-weight:700;text-align:right;white-space:nowrap;}
-  tbody td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
-  tfoot td{font-size:14px;}
-  .footer{text-align:center;padding:16px;color:#94a3b8;font-size:12px;margin-top:20px;}
-  @media print{.print-btn{display:none;}body{background:#fff;}thead tr{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
-</style></head><body>
-<div class="header">
-  <h1>${title}</h1>
-  <div class="header-meta">
-    <div>📅 ${subtitle}</div>
-    <div>👥 العدد: ${count}</div>
-    ${totalDays!==null?`<div>📊 إجمالي الأيام: ${totalDays}</div>`:''}
-    <div>🕐 ${new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
-  </div>
-</div>
-<div class="content">
-  <button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
-  <table>${tableBody}</table>
-  <div class="footer">نظام إجازات الموظفين — تم إنشاء هذا التقرير تلقائياً</div>
-</div>
-</body></html>`);
-  win.document.close();
-}
-
-// ==================== DATABASE ====================
-async function renderDbInfo() {
-  const totalLeaves = leaves.filter(l=>l.type!=='cum-add').length;
-  const totalDays = leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0);
-  const depts = [...new Set(faculty.map(f=>f.dept).filter(Boolean))].length;
-  const lastExport = await dbGetSetting('lastExportDate') || 'لم يتم التصدير بعد';
-
-  document.getElementById('db-info-grid').innerHTML = `
-    <div style="background:rgba(37,99,235,0.07);border-radius:12px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:var(--accent)">${faculty.length}</div>
-      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">👤 موظف</div>
-    </div>
-    <div style="background:rgba(16,185,129,0.07);border-radius:12px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:var(--green)">${totalLeaves}</div>
-      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">📅 سجل إجازة</div>
-    </div>
-    <div style="background:rgba(99,102,241,0.07);border-radius:12px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:var(--accent3)">${totalDays}</div>
-      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">📊 إجمالي أيام</div>
-    </div>
-    <div style="background:rgba(139,92,246,0.07);border-radius:12px;padding:16px;text-align:center;">
-      <div style="font-size:28px;font-weight:800;color:var(--purple)">${depts}</div>
-      <div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">🏛️ قسم</div>
-    </div>
-    <div style="background:rgba(245,158,11,0.07);border-radius:12px;padding:16px;text-align:center;grid-column:span 2;">
-      <div style="font-size:15px;color:#000;font-weight:600;margin-bottom:4px;">⏱️ آخر تصدير</div>
-      <div style="font-size:15px;font-weight:700;color:#000">${lastExport}</div>
-    </div>
-  `;
-}
-
-async function exportDatabase() {
-  const exportData = {
-    version: 1,
-    exportDate: new Date().toISOString(),
-    exportDateAr: new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),
-    systemName: 'نظام إجازات الموظفين',
-    faculty, leaves,
-    stats: {
-      totalFaculty: faculty.length,
-      totalLeaves: leaves.filter(l=>l.type!=='cum-add').length,
-      totalDays: leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0)
-    }
-  };
-  const blob = new Blob([JSON.stringify(exportData,null,2)],{type:'application/json;charset=utf-8;'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `نظام_الاجازات_نسخة_احتياطية_${new Date().toISOString().split('T')[0]}.json`;
-  a.click();
-  await dbSetSetting('lastExportDate', new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
-  showToast('✅ تم تنزيل قاعدة البيانات بنجاح', 'green');
-  await logActivity('⬇️ تصدير نسخة احتياطية من قاعدة البيانات', 'blue');
-  setTimeout(renderDbInfo, 500);
-}
-
-async function importDatabase(input) {
-  const file = input.files[0];
-  if (!file) return;
-  input.value = '';
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    try {
-      const data = JSON.parse(e.target.result);
-      if (!data.faculty || !data.leaves) { showToast('❌ الملف غير صالح', 'red'); return; }
-      showConfirm(`هل تريد استيراد البيانات من ملف "${file.name}"؟\nسيتم استبدال ${faculty.length} موظف و${leaves.length} سجل إجازة بالبيانات الجديدة.`, async () => {
-        try {
-          for (const f of faculty) await dbDelete('faculty', f.id);
-          for (const l of leaves) await dbDelete('leaves', l.id);
-          for (const f of data.faculty) await dbPut('faculty', f);
-          for (const l of data.leaves) await dbPut('leaves', l);
-          faculty = await dbAll('faculty');
-          leaves = await dbAll('leaves');
-          populateFilters();
-          renderDashboard();
-          renderFacultyList();
-          renderDbInfo();
-          showToast(`✅ تم استيراد ${faculty.length} موظف و${leaves.length} سجل بنجاح`, 'green');
-          await logActivity(`⬆️ استيراد قاعدة بيانات: ${faculty.length} موظف`, 'orange');
-        } catch(err) { showToast('❌ حدث خطأ أثناء الاستيراد', 'red'); }
-      });
-    } catch(err) { showToast('❌ تعذر قراءة الملف', 'red'); }
-  };
-  reader.readAsText(file);
-}
-
-// ==================== FILTERS ====================
-function populateFilters() {
-  const depts = [...new Set(faculty.map(f=>f.dept).filter(Boolean))].sort();
-  const years = getYearsList();
-
-  ['faculty-dept-filter','stats-dept-filter'].forEach(id=>{
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.innerHTML = '<option value="">الكل</option>' + depts.map(d=>`<option value="${d}">${d}</option>`).join('');
-  });
-
-  ['log-faculty-filter','stats-faculty-filter'].forEach(id=>{
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.innerHTML = '<option value="">الكل</option>' + faculty.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
-  });
-
-  ['log-year-filter','stats-year-filter'].forEach(id=>{
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.innerHTML = '<option value="">الكل</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
-  });
-}
-
-// ==================== MODAL HELPERS ====================
-function openModal(id) { document.getElementById(id).classList.add('show'); }
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
-
-function showAlert(icon, title, msg, callback) {
-  alertCallback = callback;
-  document.getElementById('alert-icon').textContent = icon;
-  document.getElementById('alert-title').textContent = title;
-  document.getElementById('alert-msg').textContent = msg;
-  openModal('modal-alert');
-}
-function alertAction(yes) {
-  closeModal('modal-alert');
-  if (alertCallback) alertCallback(yes);
-  alertCallback = null;
-}
-
-function showConfirm(msg, callback) {
-  document.getElementById('confirm-msg').textContent = msg;
-  openModal('modal-confirm');
-  document.getElementById('confirm-yes').onclick = () => { closeModal('modal-confirm'); callback(); };
-}
-
-// ==================== TOAST ====================
-function showToast(msg, type='green') {
-  const c = document.getElementById('toast-container');
-  const t = document.createElement('div');
-  t.className = 'toast';
-  const colors = {green:'var(--green)',red:'var(--red)',orange:'var(--orange)',blue:'var(--accent)'};
-  t.style.borderRight = `4px solid ${colors[type]||colors.green}`;
-  t.innerHTML = `<span>${msg}</span>`;
-  c.appendChild(t);
-  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(40px)'; t.style.transition='all 0.3s'; setTimeout(()=>t.remove(),300); }, 3200);
-}
-
-document.querySelectorAll('.modal-overlay').forEach(o => {
-  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); });
-});
-
-// ==================== LEAVE TYPE SELECTOR ====================
-function openLeaveTypeSelector() {
-  const fac = faculty.find(f=>f.id===currentFacultyId);
-  if (!fac) return;
-  const isFemale = fac.gender === 'female';
-  const isInstructor = fac.type === 'instructor';
-
-  const activeLong      = getActiveExtLeave('long');
-  const activeFiveYear  = getActiveExtLeave('fiveyear');
-  const activeMaternity = getActiveExtLeave('maternity') || getActiveExtLeave('maternity-ext');
-  const activeStudy     = getActiveExtLeave('study');
-
-  let btns = `
-    <button class="btn btn-green"  style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('normal')">📅 إجازة اعتيادية</button>
-    <button class="btn btn-red"    style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('sick')">🏥 إجازة مرضية</button>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="closeModal('modal-leave-type');openStudyLeave()">📚 إجازة دراسية</button>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('long')">🏖️ إجازة طويلة</button>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 4px 14px rgba(5,150,105,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('fiveyear')">🗓️ إجازة 5 سنوات</button>`;
-
-  if (isInstructor) {
-    btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="closeModal('modal-leave-type');openException()">⭐ استثناء (إضافة أيام اعتيادية)</button>`;
-  }
-
-  // Cut buttons for active leaves
-  if (activeStudy)    btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('study','${activeStudy.id}')">✂️ قطع الإجازة الدراسية</button>`;
-  if (activeLong)     btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('long','${activeLong.id}')">✂️ قطع الإجازة الطويلة</button>`;
-  if (activeFiveYear) btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('fiveyear','${activeFiveYear.id}')">✂️ قطع إجازة 5 سنوات</button>`;
-
-  if (isFemale) {
-    btns += `
-    <div style="border-top:1px solid rgba(99,102,241,0.12);padding-top:10px;font-size:13px;font-weight:700;color:#db2777;">👩 إجازات خاصة بالأنثى</div>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#db2777,#be185d);color:#fff;box-shadow:0 4px 14px rgba(219,39,119,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('prebirth')">🤰 إجازة قبل الوضع (21 يوم)</button>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#9333ea,#7e22ce);color:#fff;box-shadow:0 4px 14px rgba(147,51,234,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('postbirth')">👶 إجازة بعد الوضع (51 يوم)</button>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;box-shadow:0 4px 14px rgba(217,119,6,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('maternity')">🍼 إجازة أمومة (6 أشهر)</button>`;
-    if (activeMaternity) btns += `<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('maternity','${activeMaternity.id}')">✂️ قطع إجازة الأمومة</button>`;
-  }
-
-  document.getElementById('leave-type-buttons').innerHTML = btns;
-  openModal('modal-leave-type');
-}
-
-// ==================== EXCEPTION (instructor only) ====================
-function openException() {
-  const years = getYearsList();
-  const cy = currentYear();
-  document.getElementById('exc-from').value = '';
-  document.getElementById('exc-days').value = '';
-  document.getElementById('exc-to').value = '';
-  document.getElementById('exc-notes').value = '';
-  document.getElementById('exc-info-box').style.display = 'none';
-  document.getElementById('exc-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-  openModal('modal-exception');
-}
-
-async function saveException() {
-  const from  = document.getElementById('exc-from').value;
-  const days  = parseInt(document.getElementById('exc-days').value);
-  const year  = document.getElementById('exc-year').value;
-  const notes = document.getElementById('exc-notes').value.trim();
-  const toVal = document.getElementById('exc-to').value;
-  if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
-
-  const toDate = toVal || from;
-  await addLeaveRecord({
-    facultyId: currentFacultyId, type: 'exception',
-    days, fromDate: from, toDate, year,
-    notes: notes || `استثناء — إضافة ${days} يوم اعتيادية`,
-  });
-
-  closeModal('modal-exception');
-  await renderProfile(currentFacultyId);
-  renderFacultyList(); renderDashboard();
-  showToast(`✅ تمت إضافة ${days} يوم للرصيد الاعتيادي بالاستثناء`, 'green');
-  const fac = faculty.find(f=>f.id===currentFacultyId);
-  await logActivity(`⭐ استثناء — إضافة ${days} يوم اعتيادية لـ ${fac?.name||''}`, 'orange');
-}
-
-// ==================== STUDY LEAVE ====================
-function openStudyLeave() {
-  const years = getYearsList();
-  const cy = currentYear();
-  document.getElementById('sl-from').value = '';
-  document.getElementById('sl-days').value = '';
-  document.getElementById('sl-to').value   = '';
-  document.getElementById('sl-notes').value = '';
-  document.getElementById('sl-info-box').style.display = 'none';
-  document.getElementById('sl-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-  openModal('modal-study-leave');
-}
-
-function calcStudyLeaveEnd() {
-  const from = document.getElementById('sl-from').value;
-  const days = parseInt(document.getElementById('sl-days').value);
-  if (from && days > 0) {
-    const d = new Date(from);
-    d.setDate(d.getDate() + days - 1);
-    document.getElementById('sl-to').value = d.toISOString().split('T')[0];
-    const deductCount = Math.floor(days / 10);
-    const year = document.getElementById('sl-year').value;
-    const bal  = getBalance(currentFacultyId, year);
-    const box  = document.getElementById('sl-info-box');
-    box.style.display = 'block';
-    box.innerHTML = `<span style="color:#6366f1;font-weight:700;">📚 الإجازة الدراسية: ${days} يوم</span><br>
-      <span style="color:#64748b;">📊 سيُستقطع <strong>${deductCount}</strong> يوم من الاعتيادية (كل 10 أيام → يوم) | الرصيد الاعتيادي الحالي: <strong>${bal.normal}</strong> يوم</span>`;
-  }
-}
-
-async function saveStudyLeave() {
-  const from  = document.getElementById('sl-from').value;
-  const days  = parseInt(document.getElementById('sl-days').value);
-  const year  = document.getElementById('sl-year').value;
-  const notes = document.getElementById('sl-notes').value.trim();
-  const toDate = document.getElementById('sl-to').value;
-  if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
-
-  const deductDays  = Math.floor(days / 10);
-  const bal         = getBalance(currentFacultyId, year);
-  const actualDeduct = Math.min(deductDays, bal.normal);
-
-  const rec = await addLeaveRecord({
-    facultyId: currentFacultyId, type: 'study',
-    days, fromDate: from, toDate, year,
-    notes: notes || 'إجازة دراسية',
-    deductDays: actualDeduct, isActive: true, cutDate: null,
-  });
-
-  if (actualDeduct > 0) {
-    await addLeaveRecord({
-      facultyId: currentFacultyId, type: 'normal',
-      days: actualDeduct, fromDate: from, toDate, year,
-      notes: `استقطاع تلقائي من الإجازة الدراسية (كل 10 أيام)`,
-      autoDeduct: true, parentLeaveId: rec.id,
-    });
-  }
-
-  closeModal('modal-study-leave');
-  await renderProfile(currentFacultyId);
-  renderFacultyList(); renderDashboard();
-  showToast('✅ تم تسجيل الإجازة الدراسية بنجاح', 'green');
-  const fac = faculty.find(f=>f.id===currentFacultyId);
-  await logActivity(`📚 إجازة دراسية (${days} يوم) — ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`, 'blue');
-}
-
-// ==================== MANUAL BALANCE EDIT ====================
-function openManualBalance() {
-  const years = getYearsList();
-  const cy    = currentYear();
-  document.getElementById('mb-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-  document.getElementById('mb-days').value  = '';
-  document.getElementById('mb-notes').value = '';
-  document.getElementById('mb-type').value  = 'normal';
-  document.getElementById('mb-op').value    = 'set';
-  updateManualBalanceInfo();
-  openModal('modal-manual-balance');
-}
-
-function updateManualBalanceInfo() {
-  const year = document.getElementById('mb-year')?.value || currentYear();
-  const bal  = getBalance(currentFacultyId, year);
-  const cum  = getCumBalance(currentFacultyId);
-  const type = document.getElementById('mb-type')?.value || 'normal';
-  const cur  = type==='normal' ? bal.normal : type==='sick' ? bal.sick : cum;
-  const label= type==='normal'?'الاعتيادية':type==='sick'?'المرضية':'التراكمية';
-  document.getElementById('mb-info').innerHTML =
-    `<span style="font-weight:700;color:#d97706;">📊 الرصيد الحالي للإجازة ${label}: <strong>${cur}</strong> يوم</span>`;
-}
-
-async function saveManualBalance() {
-  const type  = document.getElementById('mb-type').value;
-  const op    = document.getElementById('mb-op').value;
-  const days  = parseInt(document.getElementById('mb-days').value);
-  const year  = document.getElementById('mb-year').value;
-  const notes = document.getElementById('mb-notes').value.trim() || 'تعديل يدوي للرصيد';
-  if (!days || days < 0) { showToast('⚠️ الرجاء إدخال عدد أيام صحيح', 'red'); return; }
-
-  const bal = getBalance(currentFacultyId, year);
-  const cum = getCumBalance(currentFacultyId);
-  const today = new Date().toISOString().split('T')[0];
-
-  let recType, recDays, logLabel;
-
-  if (type === 'normal') {
-    const cur = bal.normal;
-    if (op === 'set') {
-      // To set balance to X: add or subtract the difference
-      const diff = days - cur;
-      if (diff === 0) { showToast('ℹ️ الرصيد مطابق للقيمة المحددة', 'orange'); return; }
-      recType = diff > 0 ? 'exception' : 'normal';
-      recDays = Math.abs(diff);
-      if (diff < 0) {
-        // adding a normal usage record
-        await addLeaveRecord({ facultyId:currentFacultyId, type:'normal', days:recDays, fromDate:today, toDate:today, year, notes:`${notes} (تحديد الرصيد إلى ${days} يوم)`, autoDeduct:true });
-      } else {
-        await addLeaveRecord({ facultyId:currentFacultyId, type:'exception', days:recDays, fromDate:today, toDate:today, year, notes:`${notes} (تحديد الرصيد إلى ${days} يوم)` });
-      }
-      logLabel = `تحديد رصيد الاعتيادية إلى ${days} يوم`;
-    } else if (op === 'add') {
-      await addLeaveRecord({ facultyId:currentFacultyId, type:'exception', days, fromDate:today, toDate:today, year, notes:`${notes} (إضافة يدوية)` });
-      logLabel = `إضافة ${days} يوم للرصيد الاعتيادي`;
-    } else {
-      await addLeaveRecord({ facultyId:currentFacultyId, type:'normal', days, fromDate:today, toDate:today, year, notes:`${notes} (خصم يدوي)`, autoDeduct:true });
-      logLabel = `خصم ${days} يوم من الرصيد الاعتيادي`;
-    }
-  } else if (type === 'sick') {
-    const cur = bal.sick;
-    if (op === 'set') {
-      const diff = days - cur;
-      if (diff === 0) { showToast('ℹ️ الرصيد مطابق', 'orange'); return; }
-      recType = diff > 0 ? 'manual-sick-add' : 'manual-sick-sub';
-      recDays = Math.abs(diff);
-      await addLeaveRecord({ facultyId:currentFacultyId, type:recType, days:recDays, fromDate:today, toDate:today, year, notes:`${notes} (تحديد الرصيد المرضي إلى ${days})` });
-      logLabel = `تحديد رصيد المرضية إلى ${days} يوم`;
-    } else if (op === 'add') {
-      await addLeaveRecord({ facultyId:currentFacultyId, type:'manual-sick-add', days, fromDate:today, toDate:today, year, notes:`${notes} (إضافة يدوية)` });
-      logLabel = `إضافة ${days} يوم للرصيد المرضي`;
-    } else {
-      await addLeaveRecord({ facultyId:currentFacultyId, type:'manual-sick-sub', days, fromDate:today, toDate:today, year, notes:`${notes} (خصم يدوي)` });
-      logLabel = `خصم ${days} يوم من الرصيد المرضي`;
-    }
-  } else {
-    // cumulative
-    if (op === 'set') {
-      const diff = days - cum;
-      if (diff === 0) { showToast('ℹ️ الرصيد مطابق', 'orange'); return; }
-      if (diff > 0) {
-        await addLeaveRecord({ facultyId:currentFacultyId, type:'cum-add', days:diff, fromDate:today, toDate:today, year, notes:`${notes} (تحديد التراكمي)` });
-      } else {
-        await addLeaveRecord({ facultyId:currentFacultyId, type:'cumulative', days:Math.abs(diff), fromDate:today, toDate:today, year, notes:`${notes} (تحديد التراكمي)` });
-      }
-      logLabel = `تحديد الرصيد التراكمي إلى ${days} يوم`;
-    } else if (op === 'add') {
-      await addLeaveRecord({ facultyId:currentFacultyId, type:'cum-add', days, fromDate:today, toDate:today, year, notes:`${notes} (إضافة يدوية)` });
-      logLabel = `إضافة ${days} يوم للتراكمي`;
-    } else {
-      await addLeaveRecord({ facultyId:currentFacultyId, type:'cumulative', days, fromDate:today, toDate:today, year, notes:`${notes} (خصم يدوي)` });
-      logLabel = `خصم ${days} يوم من التراكمي`;
-    }
-  }
-
-  closeModal('modal-manual-balance');
-  await renderProfile(currentFacultyId);
-  renderFacultyList(); renderDashboard();
-  showToast('✅ تم تعديل الرصيد بنجاح', 'green');
-  const fac = faculty.find(f=>f.id===currentFacultyId);
-  await logActivity(`✏️ تعديل يدوي للرصيد — ${fac?.name||''} | ${logLabel}`, 'orange');
-}
-
-
-
-// Returns active extended leave record for faculty (not yet cut)
-function getActiveExtLeave(type) {
-  const types = type === 'maternity' ? ['maternity','maternity-ext'] : [type];
-  return leaves.find(l => l.facultyId === currentFacultyId && types.includes(l.type) && !l.cutDate);
-}
-
-// ==================== EXTENDED LEAVE LOGIC ====================
-// Days per type
-const EXT_LEAVE_CONFIG = {
-  long:      { label:'إجازة طويلة',         days: null, deductEvery10: true, icon:'🏖️', color:'#0891b2' },
-  fiveyear:  { label:'إجازة 5 سنوات',        days: 1825, deductEvery10: true, icon:'🗓️', color:'#059669' },
-  study:     { label:'إجازة دراسية',          days: null, deductEvery10: true, icon:'📚', color:'#6366f1', canCut: true },
-  prebirth:  { label:'إجازة قبل الوضع',       days: 21,   deductEvery10: true, icon:'🤰', color:'#db2777' },
-  postbirth: { label:'إجازة بعد الوضع',       days: 51,   deductEvery10: true, icon:'👶', color:'#9333ea' },
-  maternity: { label:'إجازة أمومة',           days: 183,  deductEvery10: true, icon:'🍼', color:'#d97706', canExtend: true },
-  'maternity-ext': { label:'تمديد إجازة أمومة', days: 183, deductEvery10: true, icon:'🍼+', color:'#dc2626' },
-};
-
-let currentExtLeaveType = null;
-
-function openExtLeave(type) {
-  currentExtLeaveType = type;
-  const cfg = EXT_LEAVE_CONFIG[type];
-  document.getElementById('ext-leave-modal-title').textContent = `${cfg.icon} ${cfg.label}`;
-
-  // Set default days if fixed
-  document.getElementById('el-from').value = '';
-  document.getElementById('el-notes').value = '';
-  document.getElementById('el-to').value = '';
-  document.getElementById('ext-leave-info-box').style.display = 'none';
-
-  if (cfg.days) {
-    document.getElementById('el-days').value = cfg.days;
-  } else {
-    document.getElementById('el-days').value = '';
-  }
-
-  // Show/hide maternity extension checkbox
-  const matGroup = document.getElementById('el-maternity-ext-group');
-  if (type === 'maternity') {
-    matGroup.style.display = 'block';
-    document.getElementById('el-extend-maternity').checked = false;
-  } else {
-    matGroup.style.display = 'none';
-  }
-
-  const ySelect = document.getElementById('el-year');
-  const years = getYearsList();
-  const cy = currentYear();
-  ySelect.innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-
-  openModal('modal-extended-leave');
-}
-
-function toggleMaternityExtension() {
-  const extend = document.getElementById('el-extend-maternity').checked;
-  if (extend) {
-    currentExtLeaveType = 'maternity-ext';
-    document.getElementById('ext-leave-modal-title').textContent = '🍼+ تمديد إجازة أمومة';
-    document.getElementById('el-days').value = EXT_LEAVE_CONFIG['maternity-ext'].days;
-  } else {
-    currentExtLeaveType = 'maternity';
-    document.getElementById('ext-leave-modal-title').textContent = '🍼 إجازة أمومة';
-    document.getElementById('el-days').value = EXT_LEAVE_CONFIG['maternity'].days;
-  }
-  calcExtLeaveEnd();
-}
-
-function calcExtLeaveEnd() {
-  const from = document.getElementById('el-from').value;
-  const days = parseInt(document.getElementById('el-days').value);
-  if (from && days > 0) {
-    const d = new Date(from);
-    d.setDate(d.getDate() + days - 1);
-    document.getElementById('el-to').value = d.toISOString().split('T')[0];
-    updateExtLeaveInfo();
-  }
-}
-
-function updateExtLeaveInfo() {
-  if (!currentFacultyId || !currentExtLeaveType) return;
-  const year = document.getElementById('el-year').value;
-  const days = parseInt(document.getElementById('el-days').value)||0;
-  const bal = getBalance(currentFacultyId, year);
-  const box = document.getElementById('ext-leave-info-box');
-  if (!days) { box.style.display='none'; return; }
-
-  const cfg = EXT_LEAVE_CONFIG[currentExtLeaveType];
-  const deductCount = Math.floor(days / 10);
-  const color = cfg.color || '#6366f1';
-  box.style.display = 'block';
-  box.innerHTML = `<span style="color:${color};font-weight:700;">${cfg.icon} ${cfg.label}: ${days} يوم</span><br>
-    <span style="color:#64748b;">📊 سيتم استقطاع <strong>${deductCount}</strong> يوم من الاعتيادية (كل 10 أيام يُستقطع يوم) | الرصيد الاعتيادي المتبقي: <strong>${bal.normal}</strong> يوم</span>`;
-}
-
-async function saveExtLeave() {
-  const from = document.getElementById('el-from').value;
-  const days = parseInt(document.getElementById('el-days').value);
-  const year = document.getElementById('el-year').value;
-  const notes = document.getElementById('el-notes').value.trim();
-  const toDate = document.getElementById('el-to').value;
-
-  if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
-
-  const cfg = EXT_LEAVE_CONFIG[currentExtLeaveType];
-
-  // Calculate deductions from normal balance (1 day per every 10 days)
-  const deductDays = Math.floor(days / 10);
-  const bal = getBalance(currentFacultyId, year);
-  const actualDeduct = Math.min(deductDays, bal.normal);
-
-  const rec = await addLeaveRecord({
-    facultyId: currentFacultyId,
-    type: currentExtLeaveType,
-    days,
-    fromDate: from,
-    toDate: toDate,
-    year,
-    notes: notes || cfg.label,
-    deductDays: actualDeduct,  // how many normal days deducted
-    isActive: true,
-    cutDate: null,
-  });
-
-  // Apply normal deduction records
-  if (actualDeduct > 0) {
-    await addLeaveRecord({
-      facultyId: currentFacultyId,
-      type: 'normal',
-      days: actualDeduct,
-      fromDate: from,
-      toDate: toDate,
-      year,
-      notes: `استقطاع تلقائي من ${cfg.label} (كل 10 أيام)`,
-      autoDeduct: true,
-      parentLeaveId: rec.id,
-    });
-  }
-
-  closeModal('modal-extended-leave');
-  await renderProfile(currentFacultyId);
-  renderFacultyList();
-  renderDashboard();
-  showToast(`✅ تم تسجيل ${cfg.label} بنجاح`, 'green');
-  const fac = faculty.find(f => f.id === currentFacultyId);
-  await logActivity(`${cfg.icon} تسجيل ${cfg.label} (${days} يوم) - ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`, 'blue');
-}
-
-// ==================== CUT LEAVE ====================
-let cuttingLeaveId = null;
-let cuttingLeaveType = null;
-
-function openCutLeave(type, leaveId) {
-  cuttingLeaveType = type;
-  cuttingLeaveId = leaveId;
-  const cfg = EXT_LEAVE_CONFIG[type] || EXT_LEAVE_CONFIG['maternity'];
-  document.getElementById('cut-leave-modal-title').textContent = `✂️ قطع ${cfg.label}`;
-  document.getElementById('cut-date').value = new Date().toISOString().split('T')[0];
-
-  const lv = leaves.find(l => l.id === leaveId);
-  if (lv) {
-    document.getElementById('cut-leave-info').innerHTML =
-      `<strong>${cfg.icon} ${cfg.label}</strong><br>
-       من: ${lv.fromDate} | إلى: ${lv.toDate} | ${lv.days} يوم<br>
-       <span style="color:var(--orange);">⚠️ عند قطع الإجازة سيُعتبر يوم المباشرة هو التاريخ المحدد ويتوقف الاستقطاع من الاعتيادية.</span>`;
-  }
-  openModal('modal-cut-leave');
-}
-
-async function confirmCutLeave() {
-  const cutDate = document.getElementById('cut-date').value;
-  if (!cutDate) { showToast('⚠️ الرجاء تحديد تاريخ المباشرة', 'red'); return; }
-
-  const lv = leaves.find(l => l.id === cuttingLeaveId);
-  if (!lv) return;
-
-  const cfg = EXT_LEAVE_CONFIG[cuttingLeaveType] || EXT_LEAVE_CONFIG['maternity'];
-
-  const fromD = new Date(lv.fromDate);
-  const cutD  = new Date(cutDate);
-  // أيام الإجازة الفعلية حتى يوم القطع (يوم المباشرة يُعدّ آخر يوم إجازة)
-  const actualDays = Math.max(1, Math.round((cutD - fromD) / 86400000));
-
-  // الاستقطاع الصحيح بناءً على الأيام الفعلية
-  const correctDeduct = Math.floor(actualDays / 10);
-  const originalDeduct = lv.deductDays || 0;
-
-  // إذا كان الاستقطاع الأصلي أكثر من الصحيح → نسترد الفرق من سجلات normal فقط
-  // لكن لا يعود أي شيء للتراكمي — فقط يتوقف الاستقطاع
-  const refundNormal = Math.max(0, originalDeduct - correctDeduct);
-
-  // تحديث سجل الإجازة الأصلي بوضع تاريخ القطع
-  const updated = { ...lv, cutDate, toDate: cutDate, days: actualDays, isActive: false, deductDays: correctDeduct };
-  await dbPut('leaves', updated);
-
-  // استرداد الأيام الاعتيادية الزائدة (إن وجدت) فقط داخل الرصيد الاعتيادي
-  if (refundNormal > 0) {
-    await addLeaveRecord({
-      facultyId: currentFacultyId,
-      type: 'normal-refund',
-      days: refundNormal,
-      fromDate: cutDate, toDate: cutDate,
-      year: lv.year,
-      notes: `استرداد استقطاع زائد عند قطع ${cfg.label} — يُضاف للرصيد الاعتيادي فقط`,
-      autoDeduct: true,
-    });
-  }
-
-  leaves = await dbAll('leaves');
-  closeModal('modal-cut-leave');
-  await renderProfile(currentFacultyId);
-  renderFacultyList(); renderDashboard();
-  showToast(`✅ تم قطع ${cfg.label} والمباشرة بتاريخ ${cutDate}`, 'green');
-  const fac = faculty.find(f => f.id === currentFacultyId);
-  await logActivity(
-    `✂️ قطع ${cfg.label} — مباشرة ${cutDate} — ${fac?.name||''}` +
-    (refundNormal > 0 ? ` | استرداد ${refundNormal} يوم للرصيد الاعتيادي` : ''),
-    'orange'
-  );
-}
-
-
-// ==================== GLOBAL YEAR CLOSE ====================
-const ACTIVE_LEAVE_TYPES_BLOCK = ['long','fiveyear','study'];
-
-function hasActiveBlockingLeave(facultyId) {
-  return leaves.some(l =>
-    l.facultyId === facultyId &&
-    ACTIVE_LEAVE_TYPES_BLOCK.includes(l.type) &&
-    !l.cutDate
-  );
-}
-
-function openGlobalYearClose() {
-  const years = getYearsList();
-  const cy = currentYear();
-  const ycYear = document.getElementById('yc-year');
-  const ycNew  = document.getElementById('yc-new-year');
-
-  ycYear.innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-
-  const buildNewYears = () => {
-    const chosen = ycYear.value;
-    ycNew.innerHTML = years
-      .filter(y => y > chosen)
-      .map(y => {
-        const [a,b] = chosen.split('/').map(Number);
-        const next = `${b}/${b+1}`;
-        return `<option value="${y}" ${y===next?'selected':''}>${y}</option>`;
-      }).join('');
-  };
-  buildNewYears();
-  ycYear.onchange = buildNewYears;
-
-  document.getElementById('yc-password').value = '';
-  document.getElementById('yc-error').style.display = 'none';
-  document.getElementById('yc-preview').style.display = 'none';
-  document.getElementById('yc-step1').style.display = 'block';
-  document.getElementById('yc-step2').style.display = 'none';
-  openModal('modal-year-close');
-}
-
-async function previewYearClose() {
-  const password    = document.getElementById('yc-password').value;
-  const errEl       = document.getElementById('yc-error');
-  errEl.style.display = 'none';
-
-  if (!password) {
-    errEl.textContent = '⚠️ الرجاء إدخال الرمز السري';
-    errEl.style.display = 'block'; return;
-  }
-  const hash    = await sha256(password);
-  const account = await getAccountFromIDB(currentUser);
-  if (!account || account.hash !== hash) {
-    errEl.textContent = '❌ الرمز السري غير صحيح';
-    errEl.style.display = 'block'; return;
-  }
-
-  const closingYear = document.getElementById('yc-year').value;
-  const newYear     = document.getElementById('yc-new-year').value;
-
-  if (!newYear || closingYear === newYear) {
-    errEl.textContent = '⚠️ يرجى اختيار سنة جديدة مختلفة';
-    errEl.style.display = 'block'; return;
-  }
-
-  // بناء جدول المعاينة
-  let rows = '';
-  let totalTransferred = 0;
-
-  faculty.forEach(fac => {
-    const bal         = getBalance(fac.id, closingYear);
-    const hasBlocking = hasActiveBlockingLeave(fac.id);
-    const nd          = getNormalDays(fac.id);
-    const transferDays = Math.max(0, bal.normal);
-    const typeLabel   = fac.type === 'instructor' ? '🎓' : '👨‍💼';
-
-    const blockNote = hasBlocking
-      ? `<span style="color:#d97706;font-size:12px;font-weight:700;">⚠️ له إجازة نشطة — يُستقطع كل 10 أيام يوم</span>`
-      : `<span style="color:#059669;font-size:12px;font-weight:700;">✅ رصيد جديد: ${nd} اعتيادية + 30 مرضية</span>`;
-
-    totalTransferred += transferDays;
-
-    rows += `<tr style="background:${hasBlocking?'rgba(245,158,11,0.05)':'rgba(16,185,129,0.03)'}">
-      <td style="padding:8px 12px;font-weight:700;border-bottom:1px solid #f1f5f9;">${typeLabel} ${fac.name}</td>
-      <td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${fac.dept||'—'}</td>
-      <td style="padding:8px 12px;text-align:center;border-bottom:1px solid #f1f5f9;">
-        ${transferDays > 0
-          ? `<span style="background:rgba(99,102,241,0.1);color:#6366f1;padding:2px 10px;border-radius:8px;font-weight:800;">+${transferDays} يوم</span>`
-          : `<span style="color:#94a3b8;">—</span>`}
-      </td>
-      <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;">${blockNote}</td>
-    </tr>`;
-  });
-
-  document.getElementById('yc-preview2').innerHTML = `
-    <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:12px;">
-      📊 معاينة إغلاق سنة <span style="color:#6366f1;">${closingYear}</span> والانتقال إلى <span style="color:#059669;">${newYear}</span>
-    </div>
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="background:linear-gradient(135deg,#6366f1,#2563eb);">
-          <th style="padding:10px 12px;color:#fff;text-align:right;">الموظف / التدريسي</th>
-          <th style="padding:10px 12px;color:#fff;text-align:right;">القسم</th>
-          <th style="padding:10px 12px;color:#fff;text-align:center;">يُرحَّل للتراكمي</th>
-          <th style="padding:10px 12px;color:#fff;text-align:right;">الرصيد الجديد</th>
-        </tr></thead>
-        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:20px;color:#64748b;">لا يوجد موظفون</td></tr>'}</tbody>
-        <tfoot><tr style="background:#f8fafc;">
-          <td colspan="2" style="padding:10px 12px;font-weight:800;">إجمالي الأيام المرحّلة</td>
-          <td style="padding:10px 12px;text-align:center;font-weight:900;color:#6366f1;font-size:16px;">+${totalTransferred} يوم</td>
-          <td></td>
-        </tr></tfoot>
-      </table>
-    </div>`;
-
-  document.getElementById('yc-step1').style.display = 'none';
-  document.getElementById('yc-step2').style.display = 'block';
-}
-
-async function executeYearClose() {
-  const closingYear = document.getElementById('yc-year').value;
-  const newYear     = document.getElementById('yc-new-year').value;
-  const today       = new Date().toISOString().split('T')[0];
-  let totalTransferred = 0;
-
-  for (const fac of faculty) {
-    const bal = getBalance(fac.id, closingYear);
-
-    // ترحيل الرصيد الاعتيادي المتبقي → تراكمي لكل موظف لديه رصيد
-    if (bal.normal > 0) {
-      await addLeaveRecord({
-        facultyId: fac.id,
-        type: 'cum-add',
-        days: bal.normal,
-        fromDate: today,
-        toDate: today,
-        year: closingYear,
-        notes: `ترحيل رصيد نهاية السنة الدراسية ${closingYear} إلى التراكمي`,
-      });
-      totalTransferred += bal.normal;
-    }
-    // ملاحظة: لا يلزم إنشاء سجلات للسنة الجديدة.
-    // getBalance() تعتمد على الثوابت (36/15 اعتيادية، 30 مرضية) + سجلات الاستخدام.
-    // الموظف صاحب الإجازة الموسّعة النشطة: الاستقطاع التلقائي كل 10 أيام مسجّل مسبقاً
-    // في سجل الإجازة الموسّعة ذاتها، وسيظل سارياً في السنة الجديدة حتى انتهاء الإجازة أو قطعها.
-  }
-
-  await dbSetSetting('lastClosedYear', closingYear);
-  await dbSetSetting('activeYear', newYear);
-
-  leaves = await dbAll('leaves');
-  closeModal('modal-year-close');
-  renderFacultyList();
-  renderDashboard();
-  populateFilters();
-
-  showToast(
-    `✅ تم إغلاق سنة ${closingYear} | ترحيل ${totalTransferred} يوم للتراكمي | السنة الجديدة: ${newYear}`,
-    'green'
-  );
-  await logActivity(
-    `⚡ إغلاق السنة الدراسية ${closingYear} — ترحيل ${totalTransferred} يوم تراكمي لـ ${faculty.length} موظف/تدريسي — السنة الجديدة: ${newYear}`,
-    'orange'
-  );
-}
-
-
-async function sha256(message) {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// ==================== AUTH SYSTEM (IDB-backed + SHA-256) ====================
-// Default accounts — passwords stored as SHA-256 hashes only, never plaintext
-// admin01:2211  admin95:1010
+// ==================== AUTH ====================
 const DEFAULT_ACCOUNTS = [
-  { username: 'admin01', hash: 'f5cde9d7a4a84e8561ac1e3df5b70e3adc38f9416e3e59e73c8d25dbc1b7e9e2' },
-  { username: 'admin95', hash: '5263f95614282a8a7dc67c7c8c5c6a2e29e7dda25f81a49a6a4ca08e0a4e5d4c' }
+  { username: 'admin01', password: '2211' },
+  { username: 'admin95', password: '1010' }
 ];
-// Note: hashes above are placeholders — real hashes seeded on first boot via seedDefaultAccounts()
-
 let currentUser = null;
 
+async function sha256(message) {
+  const msgBuffer  = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray  = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
 async function seedDefaultAccounts() {
-  // Only seeds if accounts store is empty
-  const existing = await dbAll('accounts');
+  // Pull accounts from Supabase first if online
+  if (isOnline) {
+    try {
+      const remote = await sbGetAll('accounts');
+      for (const a of remote) await idbPut('accounts', a);
+    } catch(e) {}
+  }
+  const existing = await idbAll('accounts');
   if (existing.length > 0) return;
-  const pairs = [
-    { username: 'admin01', password: '2211' },
-    { username: 'admin95', password: '1010' }
-  ];
-  for (const p of pairs) {
+  for (const p of DEFAULT_ACCOUNTS) {
     const hash = await sha256(p.password);
     await dbPut('accounts', { username: p.username, hash });
   }
 }
 
 async function getAccountFromIDB(username) {
-  return new Promise((res, rej) => {
-    const tx = db.transaction('accounts', 'readonly');
-    const req = tx.objectStore('accounts').get(username);
-    req.onsuccess = () => res(req.result || null);
-    req.onerror = () => rej();
-  });
+  return idbGet('accounts', username);
 }
 
 async function doLogin() {
-  const user = document.getElementById('login-user').value.trim();
-  const pass = document.getElementById('login-pass').value;
+  const user  = document.getElementById('login-user').value.trim();
+  const pass  = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
-  if (!user || !pass) { errEl.style.display = 'block'; return; }
+  const btn   = document.querySelector('.login-box .btn-primary');
+  if (!user || !pass) { errEl.style.display='block'; return; }
 
-  const hash = await sha256(pass);
-  const account = await getAccountFromIDB(user);
-
-  if (account && account.hash === hash) {
-    errEl.style.display = 'none';
-    currentUser = user;
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('user-topbar').style.display = 'flex';
-    document.getElementById('topbar-username').textContent = user;
-    document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
-    document.getElementById('activity-panel-username').textContent = '👤 ' + user;
-    await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
-    await renderActivityList();
-    init();
-  } else {
-    errEl.style.display = 'block';
-    document.getElementById('login-pass').value = '';
-    document.getElementById('login-pass').focus();
+  if (btn) { btn.textContent='⏳ جاري التحقق...'; btn.disabled=true; }
+  try {
+    const hash    = await sha256(pass);
+    const account = await getAccountFromIDB(user);
+    if (account && account.hash === hash) {
+      errEl.style.display = 'none';
+      currentUser = user;
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('user-topbar').style.display = 'flex';
+      document.getElementById('topbar-username').textContent = user;
+      document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
+      document.getElementById('activity-panel-username').textContent = '👤 ' + user;
+      await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
+      await renderActivityList();
+      init();
+    } else {
+      errEl.style.display = 'block';
+      document.getElementById('login-pass').value = '';
+      document.getElementById('login-pass').focus();
+    }
+  } finally {
+    if (btn) { btn.textContent='🔑 تسجيل الدخول'; btn.disabled=false; }
   }
 }
 
@@ -3292,40 +1649,23 @@ async function doLogout() {
 
 // ==================== CHANGE PASSWORD ====================
 function openChangePassword() {
-  document.getElementById('cp-current').value = '';
-  document.getElementById('cp-new').value = '';
-  document.getElementById('cp-confirm').value = '';
-  document.getElementById('change-pass-error').style.display = 'none';
+  document.getElementById('cp-current').value='';
+  document.getElementById('cp-new').value='';
+  document.getElementById('cp-confirm').value='';
+  document.getElementById('change-pass-error').style.display='none';
   openModal('modal-change-pass');
 }
-
 async function saveChangePassword() {
-  const current  = document.getElementById('cp-current').value;
-  const newPass  = document.getElementById('cp-new').value;
-  const confirm  = document.getElementById('cp-confirm').value;
-  const errEl    = document.getElementById('change-pass-error');
-
-  if (!current || !newPass || !confirm) {
-    errEl.textContent = 'يرجى ملء جميع الحقول';
-    errEl.style.display = 'block'; return;
-  }
-  if (newPass.length < 3) {
-    errEl.textContent = 'كلمة المرور الجديدة يجب أن تكون 3 أحرف على الأقل';
-    errEl.style.display = 'block'; return;
-  }
-  if (newPass !== confirm) {
-    errEl.textContent = 'كلمة المرور الجديدة وتأكيدها غير متطابقتين';
-    errEl.style.display = 'block'; return;
-  }
-
-  // Verify current password via IDB hash
+  const current = document.getElementById('cp-current').value;
+  const newPass = document.getElementById('cp-new').value;
+  const confirm = document.getElementById('cp-confirm').value;
+  const errEl   = document.getElementById('change-pass-error');
+  if (!current||!newPass||!confirm) { errEl.textContent='يرجى ملء جميع الحقول'; errEl.style.display='block'; return; }
+  if (newPass.length < 3) { errEl.textContent='كلمة المرور الجديدة يجب أن تكون 3 أحرف على الأقل'; errEl.style.display='block'; return; }
+  if (newPass !== confirm) { errEl.textContent='كلمة المرور الجديدة وتأكيدها غير متطابقتين'; errEl.style.display='block'; return; }
   const currentHash = await sha256(current);
   const account = await getAccountFromIDB(currentUser);
-  if (!account || account.hash !== currentHash) {
-    errEl.textContent = 'كلمة المرور الحالية غير صحيحة';
-    errEl.style.display = 'block'; return;
-  }
-
+  if (!account || account.hash !== currentHash) { errEl.textContent='كلمة المرور الحالية غير صحيحة'; errEl.style.display='block'; return; }
   const newHash = await sha256(newPass);
   await dbPut('accounts', { username: currentUser, hash: newHash });
   closeModal('modal-change-pass');
@@ -3333,52 +1673,27 @@ async function saveChangePassword() {
   await logActivity('🔒 تم تغيير كلمة المرور', 'orange');
 }
 
-// ==================== ACTIVITY LOG (IDB-backed) ====================
+// ==================== ACTIVITY LOG ====================
 async function logActivity(message, type = 'blue') {
   if (!currentUser) return;
   const now = new Date();
-  const timeStr = now.toLocaleString('ar-IQ', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    year: 'numeric', month: '2-digit', day: '2-digit'
-  });
+  const timeStr = now.toLocaleString('ar-IQ', { hour:'2-digit', minute:'2-digit', second:'2-digit', year:'numeric', month:'2-digit', day:'2-digit' });
   const entry = { username: currentUser, message, type, time: timeStr, ts: now.getTime() };
-  await dbPut('activity_log', entry);
-  // Keep max 200 per user — trim oldest if exceeded
+  await idbPut('activity_log', entry); // activity log stays local only
   await trimActivityLog();
   await renderActivityList();
 }
-
 async function trimActivityLog() {
-  // Get all entries for current user sorted by ts desc, delete extras
   const all = await getActivityForUser(currentUser);
   if (all.length > 200) {
-    const toDelete = all.slice(200); // oldest are at end (sorted desc)
-    for (const entry of toDelete) {
-      await new Promise((res, rej) => {
-        const tx = db.transaction('activity_log', 'readwrite');
-        const req = tx.objectStore('activity_log').delete(entry.id);
-        req.onsuccess = () => res();
-        req.onerror = () => rej();
-      });
-    }
+    const toDelete = all.slice(200);
+    for (const entry of toDelete) await idbDelete('activity_log', entry.id);
   }
 }
-
 async function getActivityForUser(username) {
-  return new Promise((res, rej) => {
-    const tx = db.transaction('activity_log', 'readonly');
-    const store = tx.objectStore('activity_log');
-    const idx = store.index('username');
-    const req = idx.getAll(username);
-    req.onsuccess = () => {
-      // sort newest first
-      const sorted = (req.result || []).sort((a, b) => b.ts - a.ts);
-      res(sorted);
-    };
-    req.onerror = () => rej([]);
-  });
+  const all = await idbAll('activity_log');
+  return all.filter(a => a.username === username).sort((a,b) => b.ts - a.ts);
 }
-
 async function renderActivityList() {
   const list = document.getElementById('activity-list');
   if (!list || !currentUser) return;
@@ -3386,103 +1701,926 @@ async function renderActivityList() {
   if (!log.length) {
     list.innerHTML = '<div class="activity-empty">لا توجد عمليات مسجلة بعد</div>';
     const badge = document.getElementById('activity-count-badge');
-    badge.style.display = 'none';
-    return;
+    badge.style.display = 'none'; return;
   }
   list.innerHTML = log.map(item => `
     <div class="activity-item act-${item.type}">
       <div>${item.message}</div>
       <div class="act-time">🕐 ${item.time}</div>
-    </div>
-  `).join('');
+    </div>`).join('');
   const badge = document.getElementById('activity-count-badge');
-  badge.textContent = log.length;
-  badge.style.display = 'inline-flex';
+  badge.textContent = log.length; badge.style.display = 'inline-flex';
 }
-
 async function clearActivityLog() {
   if (!currentUser) return;
   const entries = await getActivityForUser(currentUser);
-  for (const entry of entries) {
-    await new Promise((res, rej) => {
-      const tx = db.transaction('activity_log', 'readwrite');
-      const req = tx.objectStore('activity_log').delete(entry.id);
-      req.onsuccess = () => res();
-      req.onerror = () => rej();
-    });
-  }
+  for (const entry of entries) await idbDelete('activity_log', entry.id);
   await renderActivityList();
   showToast('🗑️ تم مسح سجل العمليات', 'orange');
 }
-
 function toggleActivityPanel() {
   const panel = document.getElementById('activity-panel');
   panel.classList.toggle('open');
   if (panel.classList.contains('open')) renderActivityList();
 }
 
-// ==================== DISABLE DEVTOOLS SHORTCUTS ====================
-(function() {
-  // Block right-click context menu
-  document.addEventListener('contextmenu', e => e.preventDefault());
+// ==================== STATE ====================
+let faculty = [];
+let leaves  = [];
+let currentFacultyId = null;
+let currentLeaveType = 'normal';
+let alertCallback    = null;
 
-  document.addEventListener('keydown', e => {
-    const k = e.key;
-    const ctrl = e.ctrlKey || e.metaKey;
-    const shift = e.shiftKey;
+const NORMAL_DAYS             = 36;
+const NORMAL_DAYS_INSTRUCTOR  = 15;
+const SICK_DAYS               = 30;
 
-    // F12
-    if (k === 'F12') { e.preventDefault(); return false; }
-    // Ctrl+Shift+I  (DevTools)
-    if (ctrl && shift && (k === 'I' || k === 'i')) { e.preventDefault(); return false; }
-    // Ctrl+Shift+J  (Console)
-    if (ctrl && shift && (k === 'J' || k === 'j')) { e.preventDefault(); return false; }
-    // Ctrl+Shift+C  (Inspector)
-    if (ctrl && shift && (k === 'C' || k === 'c')) { e.preventDefault(); return false; }
-    // Ctrl+U  (View Source)
-    if (ctrl && (k === 'U' || k === 'u')) { e.preventDefault(); return false; }
-    // Ctrl+S  (Save page)
-    if (ctrl && (k === 'S' || k === 's')) { e.preventDefault(); return false; }
+function getNormalDays(facultyId) {
+  const fac = faculty.find(f=>f.id===facultyId);
+  return fac && fac.type === 'instructor' ? NORMAL_DAYS_INSTRUCTOR : NORMAL_DAYS;
+}
+function currentYear() {
+  const now = new Date(), y = now.getFullYear();
+  return now.getMonth() >= 8 ? `${y}/${y+1}` : `${y-1}/${y}`;
+}
+function getYearsList() {
+  const start = 2020, end = new Date().getFullYear() + 2, ys = [];
+  for (let y = start; y <= end; y++) ys.push(`${y}/${y+1}`);
+  return ys;
+}
+
+// ==================== INIT ====================
+async function init() {
+  faculty = await idbAll('faculty');
+  leaves  = await idbAll('leaves');
+  const cy = currentYear();
+  document.getElementById('current-year-label').textContent = cy;
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  renderDashboard(); renderFacultyList(); populateFilters();
+  // Pull latest from cloud in background
+  pullFromSupabase();
+}
+
+// ==================== BOOT ====================
+(async function boot() {
+  await initDB();
+  await seedDefaultAccounts();
+  updateOnlineBadge();
+  // Try to sync any pending ops from last session
+  if (isOnline) syncPendingQueue();
+  // Auto-sync every 30 seconds when online
+  setInterval(() => { if (isOnline) { syncPendingQueue(); pullFromSupabase(); } }, 30000);
+  document.getElementById('login-user').focus();
+})();
+
+// ==================== NAVIGATION ====================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(i=>{ if(i.textContent.includes(pageNames[name])) i.classList.add('active'); });
+  if (name==='leaves')     renderLeavesLog();
+  if (name==='statistics') renderStats();
+  if (name==='dashboard')  renderDashboard();
+  if (name==='database')   renderDbInfo();
+}
+const pageNames = {dashboard:'الرئيسية',faculty:'الموظف',profile:'',leaves:'سجل',statistics:'الإحصائيات',database:'قاعدة'};
+
+// ==================== DASHBOARD ====================
+function renderDashboard() {
+  const cy = currentYear();
+  const totalFaculty = faculty.length;
+  const cyLeaves = leaves.filter(l=>l.year===cy);
+  const totalNormal  = cyLeaves.filter(l=>l.type==='normal'||l.type==='cumulative').reduce((s,l)=>s+l.days,0);
+  const totalSick    = cyLeaves.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
+  const halfSalary   = cyLeaves.filter(l=>l.type==='half').length;
+  document.getElementById('nav-count').textContent = totalFaculty;
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card blue"><span class="stat-icon">👤</span><div class="stat-value">${totalFaculty}</div><div class="stat-label">عدد الموظفين</div></div>
+    <div class="stat-card green"><span class="stat-icon">📅</span><div class="stat-value">${totalNormal}</div><div class="stat-label">أيام إجازات اعتيادية (${cy})</div></div>
+    <div class="stat-card red"><span class="stat-icon">🏥</span><div class="stat-value">${totalSick}</div><div class="stat-label">أيام إجازات مرضية (${cy})</div></div>
+    <div class="stat-card orange"><span class="stat-icon">💊</span><div class="stat-value">${halfSalary}</div><div class="stat-label">حالات نصف راتب</div></div>
+    <div class="stat-card purple"><span class="stat-icon">📦</span><div class="stat-value">${faculty.reduce((s,f)=>s+getCumBalance(f.id),0)}</div><div class="stat-label">إجمالي الرصيد التراكمي</div></div>`;
+  const recent = [...leaves].sort((a,b)=>b.id-a.id).slice(0,8);
+  const tbody = document.getElementById('recent-leaves-body');
+  tbody.innerHTML = recent.length ? recent.map((l,i)=>{
+    const f = faculty.find(x=>x.id===l.facultyId);
+    return `<tr><td>${i+1}</td><td><strong>${f?f.name:'—'}</strong></td><td>${leaveTypeBadge(l.type)}</td><td>${l.fromDate}</td><td>${l.toDate}</td><td><strong>${l.days}</strong></td><td>${l.year}</td></tr>`;
+  }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة بعد</p></div></td></tr>`;
+}
+
+function leaveTypeBadge(t) {
+  const map = {
+    normal:'<span class="badge badge-blue">📅 اعتيادية</span>',
+    sick:'<span class="badge badge-red">🏥 مرضية</span>',
+    cumulative:'<span class="badge badge-purple">📦 تراكمية</span>',
+    half:'<span class="badge badge-orange">💰 مرضية - نصف راتب</span>',
+    exception:'<span class="badge" style="background:rgba(245,158,11,0.12);color:#d97706;">⭐ استثناء</span>',
+    study:'<span class="badge" style="background:rgba(99,102,241,0.12);color:#6366f1;">📚 دراسية</span>',
+    long:'<span class="badge badge-gray" style="background:rgba(6,182,212,0.12);color:#0891b2;">🏖️ إجازة طويلة</span>',
+    fiveyear:'<span class="badge badge-gray" style="background:rgba(16,185,129,0.12);color:#059669;">🗓️ إجازة 5 سنوات</span>',
+    prebirth:'<span class="badge badge-gray" style="background:rgba(236,72,153,0.12);color:#db2777;">🤰 قبل الوضع</span>',
+    postbirth:'<span class="badge badge-gray" style="background:rgba(168,85,247,0.12);color:#9333ea;">👶 بعد الوضع</span>',
+    maternity:'<span class="badge badge-gray" style="background:rgba(245,158,11,0.12);color:#d97706;">🍼 إجازة أمومة</span>',
+    'maternity-ext':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.12);color:#dc2626;">🍼+ تمديد أمومة</span>',
+    'manual-sick-add':'<span class="badge badge-gray" style="background:rgba(16,185,129,0.1);color:#059669;">➕ إضافة مرضية (يدوي)</span>',
+    'manual-sick-sub':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.1);color:#dc2626;">➖ خصم مرضية (يدوي)</span>',
+  };
+  return map[t] || `<span class="badge badge-gray">${t}</span>`;
+}
+
+// ==================== BALANCES ====================
+function getBalance(facultyId, year) {
+  const fac = faculty.find(f=>f.id===facultyId);
+  if (!fac) return {normal:0,sick:0,normalUsed:0,sickUsed:0,normalDays:NORMAL_DAYS};
+  const nd = getNormalDays(facultyId);
+  const fl = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
+  const normalUsed    = fl.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
+  const normalRefund  = fl.filter(l=>l.type==='normal-refund').reduce((s,l)=>s+l.days,0);
+  const exceptionAdd  = fl.filter(l=>l.type==='exception').reduce((s,l)=>s+l.days,0);
+  const sickUsed      = fl.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
+  const sickManualAdd = fl.filter(l=>l.type==='manual-sick-add').reduce((s,l)=>s+l.days,0);
+  const sickManualSub = fl.filter(l=>l.type==='manual-sick-sub').reduce((s,l)=>s+l.days,0);
+  return {
+    normal:     nd + exceptionAdd - normalUsed + normalRefund,
+    sick:       SICK_DAYS + sickManualAdd - sickManualSub - sickUsed,
+    normalUsed: Math.max(0, normalUsed - normalRefund),
+    sickUsed,
+    normalDays: nd + exceptionAdd,
+  };
+}
+function getCumBalance(facultyId) {
+  const fac = faculty.find(f=>f.id===facultyId);
+  if (!fac) return 0;
+  const cumUsed  = leaves.filter(l=>l.facultyId===facultyId && l.type==='cumulative').reduce((s,l)=>s+l.days,0);
+  const cumAdded = leaves.filter(l=>l.facultyId===facultyId && l.type==='cum-add').reduce((s,l)=>s+l.days,0);
+  return (fac.initialCumulative||0) + cumAdded - cumUsed;
+}
+
+// ==================== FACULTY LIST ====================
+function renderFacultyList() {
+  const q    = (document.getElementById('faculty-search')?.value||'').trim().toLowerCase();
+  const dept = document.getElementById('faculty-dept-filter')?.value||'';
+  const cy   = currentYear();
+  let list = faculty.filter(f=>{
+    const matchQ = !q || f.name.toLowerCase().includes(q)||(f.dept||'').toLowerCase().includes(q);
+    const matchD = !dept || f.dept===dept;
+    return matchQ && matchD;
+  });
+  const grid = document.getElementById('faculty-grid');
+  if (!list.length) { grid.innerHTML=`<div class="empty-state"><div class="empty-icon">👤</div><p>لا يوجد موظفون مسجلون. أضف أول موظف!</p></div>`; return; }
+  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">${
+    list.map(f=>{
+      const bal=getBalance(f.id,cy), cum=getCumBalance(f.id);
+      const pctN=Math.min(100,Math.round((NORMAL_DAYS-bal.normal)/NORMAL_DAYS*100));
+      const pctS=Math.min(100,Math.round((SICK_DAYS-bal.sick)/SICK_DAYS*100));
+      return `<div class="glass-card" style="cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;" onmouseenter="this.style.transform='translateY(-4px)';this.style.boxShadow='0 12px 32px rgba(99,102,241,0.15)'" onmouseleave="this.style.transform='';this.style.boxShadow=''" onclick="openProfile('${f.id}')">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <div class="avatar">${f.name.charAt(0)}</div>
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#000">${f.name} ${f.gender==='female'?'<span style="font-size:13px;">👩</span>':f.gender==='male'?'<span style="font-size:13px;">👨</span>':''} ${f.type==='instructor'?'<span style="font-size:11px;background:rgba(8,145,178,0.12);color:#0891b2;padding:2px 7px;border-radius:8px;">🎓</span>':''}</div>
+            <div style="font-size:15px;color:#000;margin-top:2px;">${f.dept||'—'} ${f.rank?'• '+f.rank:''}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;text-align:center;">
+          <div style="background:rgba(37,99,235,0.07);border-radius:10px;padding:10px;"><div style="font-size:18px;font-weight:800;color:var(--accent);">${bal.normal}</div><div style="font-size:13px;color:#000;font-weight:600;">اعتيادية متبقية</div></div>
+          <div style="background:rgba(239,68,68,0.07);border-radius:10px;padding:10px;"><div style="font-size:18px;font-weight:800;color:var(--red);">${bal.sick}</div><div style="font-size:13px;color:#000;font-weight:600;">مرضية متبقية</div></div>
+          <div style="background:rgba(139,92,246,0.07);border-radius:10px;padding:10px;"><div style="font-size:18px;font-weight:800;color:var(--purple);">${cum}</div><div style="font-size:13px;color:#000;font-weight:600;">تراكمي</div></div>
+        </div>
+        <div style="margin-bottom:6px;"><div style="font-size:12px;color:#000;font-weight:600;margin-bottom:3px;">اعتيادية ${bal.normalUsed}/${bal.normalDays}</div><div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div></div>
+        <div><div style="font-size:12px;color:#000;font-weight:600;margin-bottom:3px;">مرضية ${bal.sickUsed}/${SICK_DAYS}</div><div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div></div>
+      </div>`;
+    }).join('')
+  }</div>`;
+}
+
+// ==================== PROFILE ====================
+function openProfile(id) {
+  currentFacultyId = id;
+  const fac = faculty.find(f=>f.id===id);
+  if (!fac) return;
+  document.getElementById('profile-name-header').textContent = fac.name;
+  showPage('profile');
+  renderProfile(id);
+}
+
+async function renderProfile(id) {
+  const fac = faculty.find(f=>f.id===id);
+  if (!fac) return;
+  const cy  = currentYear();
+  const bal = getBalance(id, cy);
+  const cum = getCumBalance(id);
+  const pctN = Math.min(100, Math.round((bal.normalDays-bal.normal)/bal.normalDays*100));
+  const pctS = Math.min(100, Math.round((SICK_DAYS-bal.sick)/SICK_DAYS*100));
+  const fLeaves = leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id.localeCompare(a.id));
+  const EXT_TYPES = ['long','fiveyear','study','prebirth','postbirth','maternity','maternity-ext'];
+  const extLeaves = fLeaves.filter(l=>EXT_TYPES.includes(l.type));
+  let extBlocks = '';
+  if (extLeaves.length) {
+    extLeaves.forEach(l=>{
+      const c = EXT_LEAVE_CONFIG[l.type]||{};
+      extBlocks += `<div class="leave-block" style="border:1px solid rgba(99,102,241,0.18);background:rgba(99,102,241,0.04);">
+        <div class="leave-block-title">${c.icon||'📋'} ${c.label||l.type}</div>
+        <div class="leave-block-val" style="font-size:20px;color:${c.color||'#6366f1'}">${l.days} يوم</div>
+        <div class="leave-block-sub">${l.fromDate} — ${l.toDate}${l.cutDate?` (مقطوعة ${l.cutDate})`:(l.isActive?' ✅ نشطة':'')}</div>
+      </div>`;
+    });
+  }
+  document.getElementById('profile-content').innerHTML = `
+    <div class="glass-card" style="margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div class="avatar" style="width:60px;height:60px;font-size:24px;">${fac.name.charAt(0)}</div>
+        <div style="flex:1;">
+          <div class="profile-name">${fac.name} ${fac.gender==='female'?'👩':fac.gender==='male'?'👨':''} ${fac.type==='instructor'?'<span style="font-size:12px;background:rgba(8,145,178,0.12);color:#0891b2;padding:2px 8px;border-radius:8px;">🎓 تدريسي</span>':'<span style="font-size:12px;background:rgba(99,102,241,0.1);color:#6366f1;padding:2px 8px;border-radius:8px;">👨‍💼 موظف</span>'}</div>
+          <div class="profile-dep">${fac.dept||'—'} ${fac.rank?'• '+fac.rank:''}</div>
+          ${fac.empNo?`<div style="font-size:13px;color:#000;margin-top:2px;">رقم الموظف: ${fac.empNo}</div>`:''}
+          ${fac.hireYear?`<div style="font-size:13px;color:#000;">سنة التعيين: ${fac.hireYear}</div>`:''}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="openLeaveTypeSelector()">➕ إضافة إجازة</button>
+          <button class="btn" style="background:rgba(99,102,241,0.1);color:#6366f1;border:1px solid rgba(99,102,241,0.2);" onclick="openEditFaculty()">✏️ تعديل</button>
+          <button class="btn btn-red" onclick="confirmDeleteFaculty()">🗑️ حذف</button>
+          <button class="btn" style="background:rgba(245,158,11,0.1);color:#d97706;border:1px solid rgba(245,158,11,0.2);" onclick="openManualBalance()">⚖️ تعديل الرصيد</button>
+          <button class="btn" style="background:rgba(16,185,129,0.1);color:#059669;border:1px solid rgba(16,185,129,0.2);" onclick="closeYearBalance('${id}')">⚡ إغلاق السنة</button>
+        </div>
+      </div>
+    </div>
+    <div class="leave-blocks">
+      <div class="leave-block">
+        <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
+        <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
+        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${bal.normalDays} يوم</div>
+        <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
+      </div>
+      <div class="leave-block">
+        <div class="leave-block-title">📦 الرصيد التراكمي</div>
+        <div class="leave-block-val" style="color:var(--purple);">${cum} <span style="font-size:15px;font-weight:500;">يوم</span></div>
+        <div class="leave-block-sub">مجموع ما تراكم من السنوات السابقة</div>
+      </div>
+      <div class="leave-block">
+        <div class="leave-block-title">🏥 الإجازة المرضية</div>
+        <div class="leave-block-val" style="color:var(--red);">${bal.sick} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
+        <div class="leave-block-sub">مستخدم: ${bal.sickUsed} من ${SICK_DAYS} يوم</div>
+        <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
+      </div>
+      <div class="leave-block" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(249,115,22,0.05));border:1px dashed rgba(245,158,11,0.4);">
+        <div class="leave-block-title">⚡ إغلاق السنة</div>
+        <div class="leave-block-val" style="color:var(--orange);font-size:14px;margin-top:8px;">يتم من الشريط الجانبي</div>
+        <div class="leave-block-sub" style="margin-top:4px;">استخدم زر "إغلاق السنة وترحيل الإجازات" في القائمة الجانبية لترحيل جميع الموظفين دفعة واحدة</div>
+      </div>
+      ${extBlocks}
+    </div>
+    <div class="glass-card">
+      <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>سجل الإجازات</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>نوع الإجازة</th><th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th><th>حذف</th></tr></thead>
+        <tbody>${fLeaves.filter(l=>l.type!=='normal-refund').length
+          ? fLeaves.filter(l=>l.type!=='normal-refund').map((l,i)=>`
+            <tr class="${l.type==='half'?'half-salary-row':''}" ${l.cutDate?'style="opacity:0.7;"':''}>
+              <td>${i+1}</td>
+              <td>${leaveTypeBadge(l.type)}${l.cutDate?` <span style="font-size:11px;color:#64748b;">(مقطوعة ${l.cutDate})</span>`:''}</td>
+              <td>${l.fromDate}</td><td>${l.toDate}</td>
+              <td><strong>${l.days}</strong></td><td>${l.year}</td>
+              <td>${l.notes||'—'}</td>
+              <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
+            </tr>`).join('')
+          : `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة لهذا الموظف</p></div></td></tr>`
+        }</tbody>
+      </table></div>
+    </div>`;
+}
+
+// ==================== YEAR CLOSE (single) ====================
+async function closeYearBalance(id) {
+  const cy = currentYear(), bal = getBalance(id, cy);
+  if (bal.normal <= 0) { showToast('⚠️ لا يوجد رصيد اعتيادي متبقي لنقله','orange'); return; }
+  const fac = faculty.find(f=>f.id===id);
+  showConfirm(`هل تريد نقل ${bal.normal} يوم متبقية من الإجازات الاعتيادية لسنة ${cy} إلى الرصيد التراكمي؟`, async()=>{
+    await addLeaveRecord({facultyId:id,type:'cum-add',days:bal.normal,fromDate:cy+'-end',toDate:cy+'-end',year:cy,notes:`نقل رصيد نهاية السنة ${cy}`});
+    await renderProfile(id); renderFacultyList();
+    showToast(`✅ تم نقل ${bal.normal} يوم إلى الرصيد التراكمي`,'green');
+    await logActivity(`⚡ إغلاق سنة ونقل ${bal.normal} يوم تراكمي - ${fac?.name||''}`,'orange');
+  });
+}
+
+// ==================== ADD/EDIT FACULTY ====================
+let editingFacultyId = null;
+function openAddFaculty(type) {
+  editingFacultyId = null;
+  const isI = type==='instructor';
+  document.getElementById('faculty-modal-title').textContent = isI?'🎓 إضافة تدريسي جديد':'👨‍💼 إضافة موظف جديد';
+  ['f-name','f-dept','f-empno','f-hire','f-rank'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-cumulative').value='0';
+  document.getElementById('f-gender').value='';
+  document.getElementById('f-type').value=type||'employee';
+  const badge = document.getElementById('f-type-badge'); badge.style.display='block';
+  if (isI) { badge.style.background='rgba(8,145,178,0.1)';badge.style.color='#0891b2';badge.style.border='1px solid rgba(8,145,178,0.2)';badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم'; }
+  else      { badge.style.background='rgba(99,102,241,0.08)';badge.style.color='#6366f1';badge.style.border='1px solid rgba(99,102,241,0.18)';badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم'; }
+  openModal('modal-faculty');
+}
+function openEditFaculty() {
+  const fac = faculty.find(f=>f.id===currentFacultyId); if (!fac) return;
+  editingFacultyId = fac.id;
+  const isI = fac.type==='instructor';
+  document.getElementById('faculty-modal-title').textContent = isI?'🎓 تعديل بيانات التدريسي':'👨‍💼 تعديل بيانات الموظف';
+  document.getElementById('f-name').value=fac.name||''; document.getElementById('f-dept').value=fac.dept||'';
+  document.getElementById('f-empno').value=fac.empNo||''; document.getElementById('f-hire').value=fac.hireYear||'';
+  document.getElementById('f-rank').value=fac.rank||''; document.getElementById('f-cumulative').value=fac.initialCumulative||0;
+  document.getElementById('f-gender').value=fac.gender||''; document.getElementById('f-type').value=fac.type||'employee';
+  const badge=document.getElementById('f-type-badge'); badge.style.display='block';
+  if (isI) { badge.style.background='rgba(8,145,178,0.1)';badge.style.color='#0891b2';badge.style.border='1px solid rgba(8,145,178,0.2)';badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم'; }
+  else      { badge.style.background='rgba(99,102,241,0.08)';badge.style.color='#6366f1';badge.style.border='1px solid rgba(99,102,241,0.18)';badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم'; }
+  openModal('modal-faculty');
+}
+async function saveFaculty() {
+  const wasEditing = !!editingFacultyId;
+  const name=document.getElementById('f-name').value.trim(), dept=document.getElementById('f-dept').value.trim();
+  const gender=document.getElementById('f-gender').value, type=document.getElementById('f-type').value||'employee';
+  if (!name)  { showToast('⚠️ الرجاء إدخال الاسم','red'); return; }
+  if (!gender){ showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)','red'); return; }
+  const obj = {id:editingFacultyId||Date.now().toString(),name,dept,gender,type,empNo:document.getElementById('f-empno').value.trim(),rank:document.getElementById('f-rank').value.trim(),hireYear:document.getElementById('f-hire').value,initialCumulative:parseInt(document.getElementById('f-cumulative').value)||0};
+  await dbPut('faculty',obj); faculty=await idbAll('faculty');
+  closeModal('modal-faculty'); renderFacultyList(); populateFilters(); renderDashboard();
+  const typeLabel=type==='instructor'?'التدريسي':'الموظف';
+  showToast(wasEditing?`✅ تم تحديث بيانات ${typeLabel}`:`✅ تم إضافة ${typeLabel} بنجاح`,'green');
+  if (wasEditing && currentFacultyId===editingFacultyId) { document.getElementById('profile-name-header').textContent=obj.name; renderProfile(obj.id); }
+  await logActivity(wasEditing?`✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}`:`➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${gender==='female'?'أنثى':'ذكر'})`,wasEditing?'orange':'green');
+}
+function confirmDeleteFaculty() {
+  const fac=faculty.find(f=>f.id===currentFacultyId), facName=fac?.name||'';
+  showConfirm(`هل أنت متأكد من حذف الموظف "${facName}" وجميع سجلات إجازاته؟`, async()=>{
+    await dbDelete('faculty',currentFacultyId);
+    const fLeaves=leaves.filter(l=>l.facultyId===currentFacultyId);
+    for (const l of fLeaves) await dbDelete('leaves',l.id);
+    faculty=await idbAll('faculty'); leaves=await idbAll('leaves');
+    showPage('faculty'); renderFacultyList(); renderDashboard(); populateFilters();
+    showToast('🗑️ تم حذف الموظف','red');
+    await logActivity(`🗑️ حذف الموظف: ${facName}`,'red');
+  });
+}
+
+// ==================== ADD LEAVE ====================
+function openAddLeave(type) {
+  currentLeaveType=type;
+  document.getElementById('leave-modal-title').textContent=type==='normal'?'📅 إضافة إجازة اعتيادية':'🏥 إضافة إجازة مرضية';
+  ['l-from','l-days','l-to','l-notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('leave-info-box').style.display='none';
+  const ySelect=document.getElementById('l-year'), years=getYearsList(), cy=currentYear();
+  ySelect.innerHTML=years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-leave');
+}
+function calcLeaveEnd() {
+  const from=document.getElementById('l-from').value, days=parseInt(document.getElementById('l-days').value);
+  if (from&&days>0) { const d=new Date(from); d.setDate(d.getDate()+days-1); document.getElementById('l-to').value=d.toISOString().split('T')[0]; updateLeaveInfo(); }
+}
+function calcLeaveDays() { calcLeaveEnd(); }
+function updateLeaveInfo() {
+  if (!currentFacultyId) return;
+  const year=document.getElementById('l-year').value, days=parseInt(document.getElementById('l-days').value)||0;
+  const bal=getBalance(currentFacultyId,year), cum=getCumBalance(currentFacultyId);
+  const box=document.getElementById('leave-info-box');
+  if (!days) { box.style.display='none'; return; }
+  if (currentLeaveType==='normal') {
+    const rem=bal.normal, color=days>rem?'var(--orange)':'var(--green)';
+    box.style.display='block';
+    box.innerHTML=`<span style="color:${color};font-weight:700;">📊 الرصيد الاعتيادي المتبقي: ${rem} يوم | الأيام المطلوبة: ${days}</span>${days>rem?`<br><span style="color:var(--orange)">⚠️ سيُقطع ${days-rem} يوم من الرصيد التراكمي (${cum} يوم)</span>`:''}`;
+  } else {
+    const rem=bal.sick, color=days>rem?'var(--orange)':'var(--green)';
+    box.style.display='block';
+    box.innerHTML=`<span style="color:${color};font-weight:700;">📊 الرصيد المرضي المتبقي: ${rem} يوم | الأيام المطلوبة: ${days}</span>${days>rem?`<br><span style="color:var(--red)">⚠️ ${days-rem} يوم ستكون بنصف الراتب</span>`:''}`;
+  }
+}
+async function saveLeave() {
+  const from=document.getElementById('l-from').value, days=parseInt(document.getElementById('l-days').value);
+  const year=document.getElementById('l-year').value, notes=document.getElementById('l-notes').value.trim();
+  if (!from||!days||days<1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام','red'); return; }
+  const bal=getBalance(currentFacultyId,year), cum=getCumBalance(currentFacultyId);
+  const endDate=document.getElementById('l-to').value;
+  if (currentLeaveType==='normal') {
+    if (bal.normal<=0) {
+      showAlert('⚠️','انتهى الرصيد الاعتيادي',`هذا الموظف لا يمتلك رصيداً اعتيادياً لسنة ${year}.\nهل تريد قطع ${days} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async(yes)=>{
+        if (!yes) return;
+        if (days>cum) { showToast('❌ الرصيد التراكمي غير كافٍ','red'); return; }
+        await addLeaveRecord({facultyId:currentFacultyId,type:'cumulative',days,fromDate:from,toDate:endDate,year,notes});
+        afterSaveLeave();
+      }); return;
+    }
+    if (days>bal.normal) {
+      const overflow=days-bal.normal;
+      showAlert('⚠️','الرصيد الاعتيادي غير كافٍ',`يمتلك هذا الموظف ${bal.normal} يوم اعتيادي متبقٍ.\nهل تريد قطع ${overflow} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async(yes)=>{
+        if (!yes) return;
+        if (overflow>cum) { showToast('❌ الرصيد التراكمي غير كافٍ لتغطية الفرق','red'); return; }
+        await addLeaveRecord({facultyId:currentFacultyId,type:'normal',days:bal.normal,fromDate:from,toDate:endDate,year,notes});
+        await addLeaveRecord({facultyId:currentFacultyId,type:'cumulative',days:overflow,fromDate:from,toDate:endDate,year,notes:'امتداد من التراكمي'});
+        afterSaveLeave();
+      }); return;
+    }
+    await addLeaveRecord({facultyId:currentFacultyId,type:'normal',days,fromDate:from,toDate:endDate,year,notes});
+    afterSaveLeave();
+  } else {
+    if (bal.sick<=0) {
+      showAlert('🏥','انتهى الرصيد المرضي',`هذا الموظف استنفد رصيده المرضي لسنة ${year}.\nهل تريد تفعيل الإجازة بنصف الراتب؟`, async(yes)=>{
+        if (!yes) return;
+        await addLeaveRecord({facultyId:currentFacultyId,type:'half',days,fromDate:from,toDate:endDate,year,notes:`إجازة مرضية بنصف الراتب - ${notes||''}`});
+        showToast('⚠️ تم تسجيل الإجازة المرضية بنصف الراتب','orange'); afterSaveLeave(false);
+      }); return;
+    }
+    if (days>bal.sick) {
+      const overflow=days-bal.sick;
+      showAlert('🏥','الرصيد المرضي غير كافٍ',`يمتلك ${bal.sick} يوم مرضي متبقٍ.\nهل تريد تسجيل ${overflow} يوم بنصف الراتب؟`, async(yes)=>{
+        if (!yes) return;
+        await addLeaveRecord({facultyId:currentFacultyId,type:'sick',days:bal.sick,fromDate:from,toDate:endDate,year,notes});
+        await addLeaveRecord({facultyId:currentFacultyId,type:'half',days:overflow,fromDate:from,toDate:endDate,year,notes:'نصف راتب - امتداد مرضي'});
+        showToast('⚠️ تم تسجيل جزء بنصف الراتب','orange'); afterSaveLeave(false);
+      }); return;
+    }
+    await addLeaveRecord({facultyId:currentFacultyId,type:'sick',days,fromDate:from,toDate:endDate,year,notes});
+    afterSaveLeave();
+  }
+}
+async function afterSaveLeave(showSuccessToast=true) {
+  closeModal('modal-leave'); renderProfile(currentFacultyId); renderFacultyList(); renderDashboard();
+  if (showSuccessToast) showToast('✅ تم تسجيل الإجازة بنجاح','green');
+  const typeMap={normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية - نصف راتب'};
+  const fac=faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`📅 تسجيل إجازة ${typeMap[currentLeaveType]||currentLeaveType} - ${fac?.name||''}`,'blue');
+}
+async function addLeaveRecord(data) {
+  const rec={id:Date.now().toString()+Math.random().toString(36).slice(2),...data};
+  await dbPut('leaves',rec); leaves=await idbAll('leaves'); return rec;
+}
+async function deleteLeave(id) {
+  const lv=leaves.find(l=>l.id===id), fac=faculty.find(f=>f.id===lv?.facultyId);
+  showConfirm('هل تريد حذف هذه الإجازة؟', async()=>{
+    await dbDelete('leaves',id); leaves=await idbAll('leaves');
+    renderProfile(currentFacultyId); renderFacultyList(); renderDashboard();
+    showToast('🗑️ تم حذف الإجازة','red');
+    await logActivity(`🗑️ حذف إجازة - ${fac?.name||''}`,'red');
+  });
+}
+
+// ==================== LEAVES LOG ====================
+function renderLeavesLog() {
+  const fFilter=document.getElementById('log-faculty-filter')?.value||'';
+  const tFilter=document.getElementById('log-type-filter')?.value||'';
+  const yFilter=document.getElementById('log-year-filter')?.value||'';
+  const fromF=document.getElementById('log-from-filter')?.value||'';
+  const toF=document.getElementById('log-to-filter')?.value||'';
+  let list=leaves.filter(l=>{
+    if (fFilter&&l.facultyId!==fFilter) return false;
+    if (tFilter&&l.type!==tFilter) return false;
+    if (yFilter&&l.year!==yFilter) return false;
+    if (fromF&&l.fromDate<fromF) return false;
+    if (toF&&l.fromDate>toF) return false;
+    if (['cum-add','normal-refund','manual-sick-add','manual-sick-sub'].includes(l.type)) return false;
+    if (l.autoDeduct) return false;
+    return true;
+  }).sort((a,b)=>b.id.localeCompare(a.id));
+  const tbody=document.getElementById('leaves-log-body'), empty=document.getElementById('log-empty');
+  if (!list.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  tbody.innerHTML=list.map((l,i)=>{
+    const f=faculty.find(x=>x.id===l.facultyId);
+    return `<tr class="${l.type==='half'?'half-salary-row':''}"><td>${i+1}</td><td><strong>${f?f.name:'—'}</strong></td><td>${f?f.dept||'—':'—'}</td><td>${leaveTypeBadge(l.type)}</td><td>${l.fromDate}</td><td>${l.toDate}</td><td><strong>${l.days}</strong></td><td>${l.year}</td><td>${l.notes||'—'}</td><td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td></tr>`;
+  }).join('');
+}
+function resetLogFilters() {
+  ['log-faculty-filter','log-type-filter','log-year-filter','log-from-filter','log-to-filter'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  renderLeavesLog();
+}
+
+// ==================== STATISTICS ====================
+function renderStats() {
+  const fFilter=document.getElementById('stats-faculty-filter')?.value||'';
+  const dFilter=document.getElementById('stats-dept-filter')?.value||'';
+  const yFilter=document.getElementById('stats-year-filter')?.value||'';
+  const cy=currentYear();
+  let list=faculty.filter(f=>{ if(fFilter&&f.id!==fFilter)return false; if(dFilter&&f.dept!==dFilter)return false; return true; });
+  const container=document.getElementById('stats-content');
+  if (!list.length) { container.innerHTML='<div class="empty-state"><div class="empty-icon">📊</div><p>لا توجد بيانات</p></div>'; return; }
+  const year=yFilter||cy;
+  const rows=list.map(f=>{ const bal=getBalance(f.id,year),cum=getCumBalance(f.id),fLeaves=leaves.filter(l=>l.facultyId===f.id&&(yFilter?l.year===year:true)&&l.type!=='cum-add'); return {f,bal,cum,fLeaves,year}; });
+  const totNorm=rows.reduce((s,r)=>s+r.bal.normalUsed,0), totSick=rows.reduce((s,r)=>s+r.bal.sickUsed,0);
+  const totHalf=rows.reduce((s,r)=>s+r.fLeaves.filter(l=>l.type==='half').reduce((a,l)=>a+l.days,0),0);
+  const totCum=rows.reduce((s,r)=>s+r.cum,0);
+  container.innerHTML=`
+    <div class="stats-grid" style="margin-bottom:20px;">
+      <div class="stat-card blue"><div class="stat-value">${rows.length}</div><div class="stat-label">عدد الموظفين</div></div>
+      <div class="stat-card green"><div class="stat-value">${totNorm}</div><div class="stat-label">إجمالي أيام اعتيادية مستخدمة</div></div>
+      <div class="stat-card red"><div class="stat-value">${totSick}</div><div class="stat-label">إجمالي أيام مرضية مستخدمة</div></div>
+      <div class="stat-card orange"><div class="stat-value">${totHalf}</div><div class="stat-label">أيام نصف راتب</div></div>
+      <div class="stat-card purple"><div class="stat-value">${totCum}</div><div class="stat-label">إجمالي الرصيد التراكمي</div></div>
+    </div>
+    <div class="glass-card"><div class="section-title"><span class="dot" style="background:var(--accent3)"></span>تفصيل لكل موظف - ${year}</div>
+    <div class="table-wrap"><table><thead><tr><th>#</th><th>الاسم</th><th>القسم</th><th>العنوان الوظيفي</th><th>اعتيادية مستخدمة</th><th>اعتيادية متبقية</th><th>مرضية مستخدمة</th><th>مرضية متبقية</th><th>تراكمي</th><th>نصف راتب</th><th>إجمالي الإجازات</th></tr></thead>
+    <tbody>${rows.map((r,i)=>{
+      const halfDays=r.fLeaves.filter(l=>l.type==='half').reduce((a,l)=>a+l.days,0);
+      const totalDays=r.fLeaves.reduce((a,l)=>a+l.days,0);
+      return `<tr><td>${i+1}</td><td><strong>${r.f.name}</strong></td><td>${r.f.dept||'—'}</td><td>${r.f.rank||'—'}</td><td><span class="badge badge-blue">${r.bal.normalUsed}</span></td><td><span class="badge badge-green">${r.bal.normal}</span></td><td><span class="badge badge-red">${r.bal.sickUsed}</span></td><td><span class="badge badge-gray">${r.bal.sick}</span></td><td><span class="badge badge-purple">${r.cum}</span></td><td>${halfDays>0?`<span class="badge badge-orange">${halfDays}</span>`:'—'}</td><td><strong>${totalDays}</strong></td></tr>`;
+    }).join('')}</tbody></table></div></div>`;
+}
+
+// ==================== EXPORT ====================
+function exportExcel() {
+  const fFilter=document.getElementById('log-faculty-filter')?.value||'', tFilter=document.getElementById('log-type-filter')?.value||'';
+  const yFilter=document.getElementById('log-year-filter')?.value||'', fromF=document.getElementById('log-from-filter')?.value||'', toF=document.getElementById('log-to-filter')?.value||'';
+  const typeMap={normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية - نصف راتب',exception:'استثناء',study:'إجازة دراسية',long:'إجازة طويلة',fiveyear:'إجازة 5 سنوات',prebirth:'إجازة قبل الوضع',postbirth:'إجازة بعد الوضع',maternity:'إجازة أمومة','maternity-ext':'تمديد إجازة أمومة'};
+  const filtered=leaves.filter(l=>{ if(['cum-add','normal-refund','manual-sick-add','manual-sick-sub'].includes(l.type)||l.autoDeduct) return false; if(fFilter&&l.facultyId!==fFilter)return false; if(tFilter&&l.type!==tFilter)return false; if(yFilter&&l.year!==yFilter)return false; if(fromF&&l.fromDate<fromF)return false; if(toF&&l.fromDate>toF)return false; return true; }).sort((a,b)=>b.id.localeCompare(a.id));
+  const rows=filtered.map((l,i)=>{ const f=faculty.find(x=>x.id===l.facultyId); return `<tr><td>${i+1}</td><td>${f?.name||'—'}</td><td>${f?.dept||'—'}</td><td>${f?.rank||'—'}</td><td>${typeMap[l.type]||l.type}</td><td>${l.fromDate}</td><td>${l.toDate}</td><td>${l.days}</td><td>${l.year}</td><td>${l.notes||'—'}</td></tr>`; }).join('');
+  const totalDays=filtered.reduce((s,l)=>s+l.days,0);
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"></head><body><table><thead><tr><th>#</th><th>الموظف</th><th>القسم</th><th>العنوان</th><th>النوع</th><th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="7">الإجمالي</td><td>${totalDays}</td><td colspan="2"></td></tr></tfoot></table></body></html>`;
+  const blob=new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='سجل_الإجازات.xls'; a.click();
+  showToast('📊 تم تصدير ملف Excel بنجاح','green'); logActivity('📊 تصدير سجل الإجازات Excel','blue');
+}
+function exportStatsExcel() {
+  const cy=currentYear(), yFilter=document.getElementById('stats-year-filter')?.value||cy;
+  const rows=faculty.map((f,i)=>{ const bal=getBalance(f.id,yFilter),cum=getCumBalance(f.id),halfDays=leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0); return `<tr><td>${i+1}</td><td>${f.name}</td><td>${f.dept||'—'}</td><td>${f.rank||'—'}</td><td>${bal.normalUsed}</td><td>${bal.normal}</td><td>${bal.sickUsed}</td><td>${bal.sick}</td><td>${cum}</td><td>${halfDays||'—'}</td></tr>`; }).join('');
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"></head><body><table><thead><tr><th>#</th><th>الاسم</th><th>القسم</th><th>العنوان</th><th>اعتيادية مستخدمة</th><th>اعتيادية متبقية</th><th>مرضية مستخدمة</th><th>مرضية متبقية</th><th>تراكمي</th><th>نصف راتب</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+  const blob=new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`إحصائيات_${yFilter}.xls`; a.click();
+  showToast('📊 تم تصدير ملف Excel بنجاح','green');
+}
+function exportPDF() {
+  const fFilter=document.getElementById('log-faculty-filter')?.value||'', tFilter=document.getElementById('log-type-filter')?.value||'', yFilter=document.getElementById('log-year-filter')?.value||'';
+  const typeMap={normal:'اعتيادية',sick:'مرضية',cumulative:'تراكمية',half:'مرضية - نصف راتب',exception:'استثناء',study:'إجازة دراسية',long:'إجازة طويلة',fiveyear:'إجازة 5 سنوات',prebirth:'إجازة قبل الوضع',postbirth:'إجازة بعد الوضع',maternity:'إجازة أمومة','maternity-ext':'تمديد إجازة أمومة'};
+  const filtered=leaves.filter(l=>{ if(['cum-add','normal-refund','manual-sick-add','manual-sick-sub'].includes(l.type)||l.autoDeduct)return false; if(fFilter&&l.facultyId!==fFilter)return false; if(tFilter&&l.type!==tFilter)return false; if(yFilter&&l.year!==yFilter)return false; return true; }).sort((a,b)=>b.id.localeCompare(a.id));
+  const totalDays=filtered.reduce((s,l)=>s+l.days,0);
+  const rows=filtered.map((l,i)=>{ const f=faculty.find(x=>x.id===l.facultyId); return `<tr><td>${i+1}</td><td><strong>${f?.name||'—'}</strong></td><td>${f?.dept||'—'}</td><td>${typeMap[l.type]||l.type}</td><td>${l.fromDate}</td><td>${l.toDate}</td><td style="text-align:center;font-weight:800;">${l.days}</td><td>${l.year}</td><td>${l.notes||'—'}</td></tr>`; }).join('');
+  openPrintWindow('📋 سجل إجازات الموظفين',yFilter||'جميع السنوات',filtered.length,totalDays,`<thead><tr><th>#</th><th>الموظف</th><th>القسم</th><th>نوع الإجازة</th><th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" style="font-weight:bold;">الإجمالي</td><td style="font-weight:900;color:#2563eb;font-size:18px;text-align:center;">${totalDays}</td><td colspan="2"></td></tr></tfoot>`);
+  logActivity('📄 تصدير سجل الإجازات PDF','blue');
+}
+function exportStatsPDF() {
+  const cy=currentYear(), yFilter=document.getElementById('stats-year-filter')?.value||cy;
+  const rows=faculty.map((f,i)=>{ const bal=getBalance(f.id,yFilter),cum=getCumBalance(f.id),halfDays=leaves.filter(l=>l.facultyId===f.id&&l.type==='half'&&l.year===yFilter).reduce((s,l)=>s+l.days,0); return `<tr><td>${i+1}</td><td><strong>${f.name}</strong></td><td>${f.dept||'—'}</td><td>${f.rank||'—'}</td><td>${bal.normalUsed}</td><td>${bal.normal}</td><td>${bal.sickUsed}</td><td>${bal.sick}</td><td>${cum}</td><td>${halfDays>0?halfDays:'—'}</td></tr>`; }).join('');
+  openPrintWindow('📊 إحصائيات إجازات الموظفين',yFilter,faculty.length,null,`<thead><tr><th>#</th><th>الاسم</th><th>القسم</th><th>العنوان الوظيفي</th><th>اعتيادية مستخدمة</th><th>اعتيادية متبقية</th><th>مرضية مستخدمة</th><th>مرضية متبقية</th><th>تراكمي</th><th>نصف راتب</th></tr></thead><tbody>${rows}</tbody>`);
+}
+function openPrintWindow(title,subtitle,count,totalDays,tableBody) {
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${title}</title><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Cairo',Arial,sans-serif;direction:rtl;background:#f8fafc;color:#1e293b;}.header{background:linear-gradient(135deg,#6366f1,#2563eb);color:#fff;padding:28px 36px;}.header h1{font-size:22px;font-weight:800;margin-bottom:6px;}.header-meta{display:flex;gap:24px;font-size:13px;opacity:.85;flex-wrap:wrap;}.content{padding:24px 36px;}.print-btn{background:#fff;color:#6366f1;border:none;padding:10px 22px;border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:20px;}table{width:100%;border-collapse:collapse;}thead tr{background:linear-gradient(135deg,#6366f1,#2563eb);}thead th{padding:12px 14px;color:#fff;font-size:12px;font-weight:700;text-align:right;}tbody td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f1f5f9;}@media print{.print-btn{display:none;}}</style></head><body><div class="header"><h1>${title}</h1><div class="header-meta"><div>📅 ${subtitle}</div><div>👥 العدد: ${count}</div>${totalDays!==null?`<div>📊 إجمالي الأيام: ${totalDays}</div>`:''}<div>🕐 ${new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div></div><div class="content"><button class="print-btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button><table>${tableBody}</table><div style="text-align:center;padding:16px;color:#94a3b8;font-size:12px;margin-top:20px;">نظام إجازات الموظفين — تم إنشاء هذا التقرير تلقائياً</div></div></body></html>`);
+  win.document.close();
+}
+
+// ==================== DATABASE PAGE ====================
+async function renderDbInfo() {
+  const totalLeaves=leaves.filter(l=>l.type!=='cum-add').length;
+  const totalDays=leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0);
+  const depts=[...new Set(faculty.map(f=>f.dept).filter(Boolean))].length;
+  const lastExport=await dbGetSetting('lastExportDate')||'لم يتم التصدير بعد';
+  const queue=await idbAll('sync_queue');
+  document.getElementById('db-info-grid').innerHTML=`
+    <div style="background:rgba(37,99,235,0.07);border-radius:12px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:var(--accent)">${faculty.length}</div><div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">👤 موظف</div></div>
+    <div style="background:rgba(16,185,129,0.07);border-radius:12px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:var(--green)">${totalLeaves}</div><div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">📅 سجل إجازة</div></div>
+    <div style="background:rgba(99,102,241,0.07);border-radius:12px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:var(--accent3)">${totalDays}</div><div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">📊 إجمالي أيام</div></div>
+    <div style="background:rgba(139,92,246,0.07);border-radius:12px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:800;color:var(--purple)">${depts}</div><div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">🏛️ قسم</div></div>
+    <div style="background:rgba(245,158,11,0.07);border-radius:12px;padding:16px;text-align:center;"><div style="font-size:15px;color:#000;font-weight:600;margin-bottom:4px;">⏱️ آخر تصدير</div><div style="font-size:15px;font-weight:700;color:#000">${lastExport}</div></div>
+    <div style="background:rgba(${queue.length>0?'245,158,11':'16,185,129'},0.07);border-radius:12px;padding:16px;text-align:center;"><div style="font-size:22px;font-weight:800;color:${queue.length>0?'var(--orange)':'var(--green)'}">${queue.length>0?queue.length+' معلق':'✅ متزامن'}</div><div style="font-size:15px;color:#000;font-weight:600;margin-top:4px;">☁️ حالة المزامنة</div>${queue.length>0?`<button onclick="syncPendingQueue().then(renderDbInfo)" style="margin-top:8px;padding:4px 12px;border-radius:8px;border:none;background:var(--orange);color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">🔄 مزامنة الآن</button>`:''}</div>`;
+}
+async function exportDatabase() {
+  const exportData={version:1,exportDate:new Date().toISOString(),exportDateAr:new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),systemName:'نظام إجازات الموظفين',faculty,leaves,stats:{totalFaculty:faculty.length,totalLeaves:leaves.filter(l=>l.type!=='cum-add').length,totalDays:leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0)}};
+  const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`نظام_الاجازات_نسخة_احتياطية_${new Date().toISOString().split('T')[0]}.json`; a.click();
+  await dbSetSetting('lastExportDate',new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
+  showToast('✅ تم تنزيل قاعدة البيانات بنجاح','green');
+  await logActivity('⬇️ تصدير نسخة احتياطية من قاعدة البيانات','blue');
+  setTimeout(renderDbInfo,500);
+}
+async function importDatabase(input) {
+  const file=input.files[0]; if (!file) return; input.value='';
+  const reader=new FileReader();
+  reader.onload=async(e)=>{
+    try {
+      const data=JSON.parse(e.target.result);
+      if (!data.faculty||!data.leaves) { showToast('❌ الملف غير صالح','red'); return; }
+      showConfirm(`هل تريد استيراد البيانات من ملف "${file.name}"؟\nسيتم استبدال ${faculty.length} موظف و${leaves.length} سجل إجازة بالبيانات الجديدة.`, async()=>{
+        try {
+          for (const f of faculty) await dbDelete('faculty',f.id);
+          for (const l of leaves)  await dbDelete('leaves',l.id);
+          for (const f of data.faculty) await dbPut('faculty',f);
+          for (const l of data.leaves)  await dbPut('leaves',l);
+          faculty=await idbAll('faculty'); leaves=await idbAll('leaves');
+          populateFilters(); renderDashboard(); renderFacultyList(); renderDbInfo();
+          showToast(`✅ تم استيراد ${faculty.length} موظف و${leaves.length} سجل بنجاح`,'green');
+          await logActivity(`⬆️ استيراد قاعدة بيانات: ${faculty.length} موظف`,'orange');
+        } catch(err) { showToast('❌ حدث خطأ أثناء الاستيراد','red'); }
+      });
+    } catch(err) { showToast('❌ تعذر قراءة الملف','red'); }
+  };
+  reader.readAsText(file);
+}
+
+// ==================== FILTERS ====================
+function populateFilters() {
+  const depts=[...new Set(faculty.map(f=>f.dept).filter(Boolean))].sort(), years=getYearsList();
+  ['faculty-dept-filter','stats-dept-filter'].forEach(id=>{ const el=document.getElementById(id); if(!el)return; el.innerHTML='<option value="">الكل</option>'+depts.map(d=>`<option value="${d}">${d}</option>`).join(''); });
+  ['log-faculty-filter','stats-faculty-filter'].forEach(id=>{ const el=document.getElementById(id); if(!el)return; el.innerHTML='<option value="">الكل</option>'+faculty.map(f=>`<option value="${f.id}">${f.name}</option>`).join(''); });
+  ['log-year-filter','stats-year-filter'].forEach(id=>{ const el=document.getElementById(id); if(!el)return; el.innerHTML='<option value="">الكل</option>'+years.map(y=>`<option value="${y}">${y}</option>`).join(''); });
+}
+
+// ==================== MODALS ====================
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function showAlert(icon,title,msg,callback) { alertCallback=callback; document.getElementById('alert-icon').textContent=icon; document.getElementById('alert-title').textContent=title; document.getElementById('alert-msg').textContent=msg; openModal('modal-alert'); }
+function alertAction(yes) { closeModal('modal-alert'); if(alertCallback) alertCallback(yes); alertCallback=null; }
+function showConfirm(msg,callback) { document.getElementById('confirm-msg').textContent=msg; openModal('modal-confirm'); document.getElementById('confirm-yes').onclick=()=>{ closeModal('modal-confirm'); callback(); }; }
+
+// ==================== TOAST ====================
+function showToast(msg,type='green') {
+  const c=document.getElementById('toast-container'), t=document.createElement('div'); t.className='toast';
+  const colors={green:'var(--green)',red:'var(--red)',orange:'var(--orange)',blue:'var(--accent)'};
+  t.style.borderRight=`4px solid ${colors[type]||colors.green}`; t.innerHTML=`<span>${msg}</span>`; c.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(40px)'; t.style.transition='all 0.3s'; setTimeout(()=>t.remove(),300); },3200);
+}
+document.querySelectorAll('.modal-overlay').forEach(o=>{ o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('show'); }); });
+
+// ==================== LEAVE TYPE SELECTOR ====================
+function openLeaveTypeSelector() {
+  const fac=faculty.find(f=>f.id===currentFacultyId); if(!fac) return;
+  const isFemale=fac.gender==='female', isInstructor=fac.type==='instructor';
+  const activeLong=getActiveExtLeave('long'), activeFiveYear=getActiveExtLeave('fiveyear');
+  const activeMaternity=getActiveExtLeave('maternity')||getActiveExtLeave('maternity-ext');
+  const activeStudy=getActiveExtLeave('study');
+  let btns=`
+    <button class="btn btn-green" style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('normal')">📅 إجازة اعتيادية</button>
+    <button class="btn btn-red" style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('sick')">🏥 إجازة مرضية</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="closeModal('modal-leave-type');openStudyLeave()">📚 إجازة دراسية</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('long')">🏖️ إجازة طويلة</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 4px 14px rgba(5,150,105,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('fiveyear')">🗓️ إجازة 5 سنوات</button>`;
+  if (isInstructor) btns+=`<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="closeModal('modal-leave-type');openException()">⭐ استثناء (إضافة أيام اعتيادية)</button>`;
+  if (activeStudy)    btns+=`<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('study','${activeStudy.id}')">✂️ قطع الإجازة الدراسية</button>`;
+  if (activeLong)     btns+=`<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('long','${activeLong.id}')">✂️ قطع الإجازة الطويلة</button>`;
+  if (activeFiveYear) btns+=`<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('fiveyear','${activeFiveYear.id}')">✂️ قطع إجازة 5 سنوات</button>`;
+  if (isFemale) {
+    btns+=`<div style="border-top:1px solid rgba(99,102,241,0.12);padding-top:10px;font-size:13px;font-weight:700;color:#db2777;">👩 إجازات خاصة بالأنثى</div>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#db2777,#be185d);color:#fff;box-shadow:0 4px 14px rgba(219,39,119,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('prebirth')">🤰 إجازة قبل الوضع (21 يوم)</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#9333ea,#7e22ce);color:#fff;box-shadow:0 4px 14px rgba(147,51,234,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('postbirth')">👶 إجازة بعد الوضع (51 يوم)</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;box-shadow:0 4px 14px rgba(217,119,6,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('maternity')">🍼 إجازة أمومة (6 أشهر)</button>`;
+    if (activeMaternity) btns+=`<button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#475569,#334155);color:#fff;" onclick="closeModal('modal-leave-type');openCutLeave('maternity','${activeMaternity.id}')">✂️ قطع إجازة الأمومة</button>`;
+  }
+  document.getElementById('leave-type-buttons').innerHTML=btns;
+  openModal('modal-leave-type');
+}
+
+// ==================== EXCEPTION ====================
+function openException() {
+  const years=getYearsList(), cy=currentYear();
+  ['exc-from','exc-days','exc-to','exc-notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('exc-info-box').style.display='none';
+  document.getElementById('exc-year').innerHTML=years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-exception');
+}
+async function saveException() {
+  const from=document.getElementById('exc-from').value, days=parseInt(document.getElementById('exc-days').value);
+  const year=document.getElementById('exc-year').value, notes=document.getElementById('exc-notes').value.trim();
+  const toVal=document.getElementById('exc-to').value;
+  if (!from||!days||days<1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام','red'); return; }
+  const toDate=toVal||from;
+  await addLeaveRecord({facultyId:currentFacultyId,type:'exception',days,fromDate:from,toDate,year,notes:notes||`استثناء — إضافة ${days} يوم اعتيادية`});
+  closeModal('modal-exception'); await renderProfile(currentFacultyId); renderFacultyList(); renderDashboard();
+  showToast(`✅ تمت إضافة ${days} يوم للرصيد الاعتيادي بالاستثناء`,'green');
+  const fac=faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`⭐ استثناء — إضافة ${days} يوم اعتيادية لـ ${fac?.name||''}`,'orange');
+}
+
+// ==================== STUDY LEAVE ====================
+function openStudyLeave() {
+  const years=getYearsList(), cy=currentYear();
+  ['sl-from','sl-days','sl-to','sl-notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('sl-info-box').style.display='none';
+  document.getElementById('sl-year').innerHTML=years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-study-leave');
+}
+function calcStudyLeaveEnd() {
+  const from=document.getElementById('sl-from').value, days=parseInt(document.getElementById('sl-days').value);
+  if (from&&days>0) {
+    const d=new Date(from); d.setDate(d.getDate()+days-1); document.getElementById('sl-to').value=d.toISOString().split('T')[0];
+    const deductCount=Math.floor(days/10), year=document.getElementById('sl-year').value;
+    const bal=getBalance(currentFacultyId,year), box=document.getElementById('sl-info-box');
+    box.style.display='block';
+    box.innerHTML=`<span style="color:#6366f1;font-weight:700;">📚 الإجازة الدراسية: ${days} يوم</span><br><span style="color:#64748b;">📊 سيُستقطع <strong>${deductCount}</strong> يوم من الاعتيادية (كل 10 أيام → يوم) | الرصيد الاعتيادي الحالي: <strong>${bal.normal}</strong> يوم</span>`;
+  }
+}
+async function saveStudyLeave() {
+  const from=document.getElementById('sl-from').value, days=parseInt(document.getElementById('sl-days').value);
+  const year=document.getElementById('sl-year').value, notes=document.getElementById('sl-notes').value.trim();
+  const toDate=document.getElementById('sl-to').value;
+  if (!from||!days||days<1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام','red'); return; }
+  const deductDays=Math.floor(days/10), bal=getBalance(currentFacultyId,year);
+  const actualDeduct=Math.min(deductDays,bal.normal);
+  const rec=await addLeaveRecord({facultyId:currentFacultyId,type:'study',days,fromDate:from,toDate,year,notes:notes||'إجازة دراسية',deductDays:actualDeduct,isActive:true,cutDate:null});
+  if (actualDeduct>0) await addLeaveRecord({facultyId:currentFacultyId,type:'normal',days:actualDeduct,fromDate:from,toDate,year,notes:'استقطاع تلقائي من الإجازة الدراسية (كل 10 أيام)',autoDeduct:true,parentLeaveId:rec.id});
+  closeModal('modal-study-leave'); await renderProfile(currentFacultyId); renderFacultyList(); renderDashboard();
+  showToast('✅ تم تسجيل الإجازة الدراسية بنجاح','green');
+  const fac=faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`📚 إجازة دراسية (${days} يوم) — ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`,'blue');
+}
+
+// ==================== MANUAL BALANCE ====================
+function openManualBalance() {
+  const years=getYearsList(), cy=currentYear();
+  document.getElementById('mb-year').innerHTML=years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  document.getElementById('mb-days').value=''; document.getElementById('mb-notes').value='';
+  document.getElementById('mb-type').value='normal'; document.getElementById('mb-op').value='set';
+  updateManualBalanceInfo(); openModal('modal-manual-balance');
+}
+function updateManualBalanceInfo() {
+  const year=document.getElementById('mb-year')?.value||currentYear();
+  const bal=getBalance(currentFacultyId,year), cum=getCumBalance(currentFacultyId);
+  const type=document.getElementById('mb-type')?.value||'normal';
+  const cur=type==='normal'?bal.normal:type==='sick'?bal.sick:cum;
+  const label=type==='normal'?'الاعتيادية':type==='sick'?'المرضية':'التراكمية';
+  document.getElementById('mb-info').innerHTML=`<span style="font-weight:700;color:#d97706;">📊 الرصيد الحالي للإجازة ${label}: <strong>${cur}</strong> يوم</span>`;
+}
+async function saveManualBalance() {
+  const type=document.getElementById('mb-type').value, op=document.getElementById('mb-op').value;
+  const days=parseInt(document.getElementById('mb-days').value), year=document.getElementById('mb-year').value;
+  const notes=document.getElementById('mb-notes').value.trim()||'تعديل يدوي للرصيد';
+  if (!days||days<0) { showToast('⚠️ الرجاء إدخال عدد أيام صحيح','red'); return; }
+  const bal=getBalance(currentFacultyId,year), cum=getCumBalance(currentFacultyId);
+  const today=new Date().toISOString().split('T')[0];
+  let logLabel;
+  if (type==='normal') {
+    const cur=bal.normal;
+    if (op==='set') {
+      const diff=days-cur; if(diff===0){showToast('ℹ️ الرصيد مطابق للقيمة المحددة','orange');return;}
+      if(diff<0) await addLeaveRecord({facultyId:currentFacultyId,type:'normal',days:Math.abs(diff),fromDate:today,toDate:today,year,notes:`${notes} (تحديد الرصيد إلى ${days} يوم)`,autoDeduct:true});
+      else await addLeaveRecord({facultyId:currentFacultyId,type:'exception',days:diff,fromDate:today,toDate:today,year,notes:`${notes} (تحديد الرصيد إلى ${days} يوم)`});
+      logLabel=`تحديد رصيد الاعتيادية إلى ${days} يوم`;
+    } else if (op==='add') { await addLeaveRecord({facultyId:currentFacultyId,type:'exception',days,fromDate:today,toDate:today,year,notes:`${notes} (إضافة يدوية)`}); logLabel=`إضافة ${days} يوم للرصيد الاعتيادي`; }
+    else { await addLeaveRecord({facultyId:currentFacultyId,type:'normal',days,fromDate:today,toDate:today,year,notes:`${notes} (خصم يدوي)`,autoDeduct:true}); logLabel=`خصم ${days} يوم من الرصيد الاعتيادي`; }
+  } else if (type==='sick') {
+    const cur=bal.sick;
+    if (op==='set') {
+      const diff=days-cur; if(diff===0){showToast('ℹ️ الرصيد مطابق','orange');return;}
+      const recType=diff>0?'manual-sick-add':'manual-sick-sub';
+      await addLeaveRecord({facultyId:currentFacultyId,type:recType,days:Math.abs(diff),fromDate:today,toDate:today,year,notes:`${notes} (تحديد الرصيد المرضي إلى ${days})`});
+      logLabel=`تحديد رصيد المرضية إلى ${days} يوم`;
+    } else if (op==='add') { await addLeaveRecord({facultyId:currentFacultyId,type:'manual-sick-add',days,fromDate:today,toDate:today,year,notes:`${notes} (إضافة يدوية)`}); logLabel=`إضافة ${days} يوم للرصيد المرضي`; }
+    else { await addLeaveRecord({facultyId:currentFacultyId,type:'manual-sick-sub',days,fromDate:today,toDate:today,year,notes:`${notes} (خصم يدوي)`}); logLabel=`خصم ${days} يوم من الرصيد المرضي`; }
+  } else {
+    if (op==='set') {
+      const diff=days-cum; if(diff===0){showToast('ℹ️ الرصيد مطابق','orange');return;}
+      if(diff>0) await addLeaveRecord({facultyId:currentFacultyId,type:'cum-add',days:diff,fromDate:today,toDate:today,year,notes:`${notes} (تحديد التراكمي)`});
+      else await addLeaveRecord({facultyId:currentFacultyId,type:'cumulative',days:Math.abs(diff),fromDate:today,toDate:today,year,notes:`${notes} (تحديد التراكمي)`});
+      logLabel=`تحديد الرصيد التراكمي إلى ${days} يوم`;
+    } else if (op==='add') { await addLeaveRecord({facultyId:currentFacultyId,type:'cum-add',days,fromDate:today,toDate:today,year,notes:`${notes} (إضافة يدوية)`}); logLabel=`إضافة ${days} يوم للرصيد التراكمي`; }
+    else { await addLeaveRecord({facultyId:currentFacultyId,type:'cumulative',days,fromDate:today,toDate:today,year,notes:`${notes} (خصم يدوي)`}); logLabel=`خصم ${days} يوم من الرصيد التراكمي`; }
+  }
+  closeModal('modal-manual-balance'); await renderProfile(currentFacultyId); renderFacultyList(); renderDashboard();
+  showToast('✅ تم تعديل الرصيد بنجاح','green');
+  await logActivity(`✏️ ${logLabel} - ${faculty.find(f=>f.id===currentFacultyId)?.name||''}`,'orange');
+}
+
+// ==================== EXTENDED LEAVE ====================
+const EXT_LEAVE_CONFIG = {
+  long:          {label:'إجازة طويلة',      days:null, deductEvery10:true, icon:'🏖️', color:'#0891b2'},
+  fiveyear:      {label:'إجازة 5 سنوات',    days:1825, deductEvery10:true, icon:'🗓️', color:'#059669'},
+  study:         {label:'إجازة دراسية',      days:null, deductEvery10:true, icon:'📚', color:'#6366f1', canCut:true},
+  prebirth:      {label:'إجازة قبل الوضع',  days:21,   deductEvery10:true, icon:'🤰', color:'#db2777'},
+  postbirth:     {label:'إجازة بعد الوضع',  days:51,   deductEvery10:true, icon:'👶', color:'#9333ea'},
+  maternity:     {label:'إجازة أمومة',       days:183,  deductEvery10:true, icon:'🍼', color:'#d97706', canExtend:true},
+  'maternity-ext':{label:'تمديد إجازة أمومة',days:183, deductEvery10:true, icon:'🍼+',color:'#dc2626'},
+};
+let currentExtLeaveType=null;
+
+function openExtLeave(type) {
+  currentExtLeaveType=type;
+  const cfg=EXT_LEAVE_CONFIG[type];
+  document.getElementById('ext-leave-modal-title').textContent=`${cfg.icon} ${cfg.label}`;
+  ['el-from','el-notes','el-to'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ext-leave-info-box').style.display='none';
+  document.getElementById('el-days').value=cfg.days||'';
+  const matGroup=document.getElementById('el-maternity-ext-group');
+  if (type==='maternity') { matGroup.style.display='block'; document.getElementById('el-extend-maternity').checked=false; } else matGroup.style.display='none';
+  const ySelect=document.getElementById('el-year'), years=getYearsList(), cy=currentYear();
+  ySelect.innerHTML=years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-extended-leave');
+}
+function toggleMaternityExtension() {
+  const extend=document.getElementById('el-extend-maternity').checked;
+  if (extend) { currentExtLeaveType='maternity-ext'; document.getElementById('ext-leave-modal-title').textContent='🍼+ تمديد إجازة أمومة'; document.getElementById('el-days').value=EXT_LEAVE_CONFIG['maternity-ext'].days; }
+  else        { currentExtLeaveType='maternity';     document.getElementById('ext-leave-modal-title').textContent='🍼 إجازة أمومة';          document.getElementById('el-days').value=EXT_LEAVE_CONFIG['maternity'].days; }
+  calcExtLeaveEnd();
+}
+function calcExtLeaveEnd() {
+  const from=document.getElementById('el-from').value, days=parseInt(document.getElementById('el-days').value);
+  if (from&&days>0) { const d=new Date(from); d.setDate(d.getDate()+days-1); document.getElementById('el-to').value=d.toISOString().split('T')[0]; updateExtLeaveInfo(); }
+}
+function updateExtLeaveInfo() {
+  if (!currentFacultyId||!currentExtLeaveType) return;
+  const year=document.getElementById('el-year').value, days=parseInt(document.getElementById('el-days').value)||0;
+  const bal=getBalance(currentFacultyId,year), box=document.getElementById('ext-leave-info-box');
+  if (!days) { box.style.display='none'; return; }
+  const cfg=EXT_LEAVE_CONFIG[currentExtLeaveType], deductCount=Math.floor(days/10);
+  box.style.display='block';
+  box.innerHTML=`<span style="color:${cfg.color||'#6366f1'};font-weight:700;">${cfg.icon} ${cfg.label}: ${days} يوم</span><br><span style="color:#64748b;">📊 سيتم استقطاع <strong>${deductCount}</strong> يوم من الاعتيادية (كل 10 أيام يُستقطع يوم) | الرصيد الاعتيادي المتبقي: <strong>${bal.normal}</strong> يوم</span>`;
+}
+async function saveExtLeave() {
+  const from=document.getElementById('el-from').value, days=parseInt(document.getElementById('el-days').value);
+  const year=document.getElementById('el-year').value, notes=document.getElementById('el-notes').value.trim();
+  const toDate=document.getElementById('el-to').value;
+  if (!from||!days||days<1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام','red'); return; }
+  const cfg=EXT_LEAVE_CONFIG[currentExtLeaveType], deductDays=Math.floor(days/10);
+  const bal=getBalance(currentFacultyId,year), actualDeduct=Math.min(deductDays,bal.normal);
+  const rec=await addLeaveRecord({facultyId:currentFacultyId,type:currentExtLeaveType,days,fromDate:from,toDate,year,notes:notes||cfg.label,deductDays:actualDeduct,isActive:true,cutDate:null});
+  if (actualDeduct>0) await addLeaveRecord({facultyId:currentFacultyId,type:'normal',days:actualDeduct,fromDate:from,toDate,year,notes:`استقطاع تلقائي من ${cfg.label} (كل 10 أيام)`,autoDeduct:true,parentLeaveId:rec.id});
+  closeModal('modal-extended-leave'); await renderProfile(currentFacultyId); renderFacultyList(); renderDashboard();
+  showToast(`✅ تم تسجيل ${cfg.label} بنجاح`,'green');
+  const fac=faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`${cfg.icon} تسجيل ${cfg.label} (${days} يوم) - ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`,'blue');
+}
+function getActiveExtLeave(type) {
+  const types=type==='maternity'?['maternity','maternity-ext']:[type];
+  return leaves.find(l=>l.facultyId===currentFacultyId&&types.includes(l.type)&&!l.cutDate);
+}
+
+// ==================== CUT LEAVE ====================
+let cuttingLeaveId=null, cuttingLeaveType=null;
+function openCutLeave(type,leaveId) {
+  cuttingLeaveType=type; cuttingLeaveId=leaveId;
+  const cfg=EXT_LEAVE_CONFIG[type]||EXT_LEAVE_CONFIG['maternity'];
+  document.getElementById('cut-leave-modal-title').textContent=`✂️ قطع ${cfg.label}`;
+  document.getElementById('cut-date').value=new Date().toISOString().split('T')[0];
+  const lv=leaves.find(l=>l.id===leaveId);
+  if (lv) document.getElementById('cut-leave-info').innerHTML=`<strong>${cfg.icon} ${cfg.label}</strong><br>من: ${lv.fromDate} | إلى: ${lv.toDate} | ${lv.days} يوم<br><span style="color:var(--orange);">⚠️ عند قطع الإجازة سيُعتبر يوم المباشرة هو التاريخ المحدد ويتوقف الاستقطاع من الاعتيادية.</span>`;
+  openModal('modal-cut-leave');
+}
+async function confirmCutLeave() {
+  const cutDate=document.getElementById('cut-date').value;
+  if (!cutDate) { showToast('⚠️ الرجاء تحديد تاريخ المباشرة','red'); return; }
+  const lv=leaves.find(l=>l.id===cuttingLeaveId); if (!lv) return;
+  const cfg=EXT_LEAVE_CONFIG[cuttingLeaveType]||EXT_LEAVE_CONFIG['maternity'];
+  const fromD=new Date(lv.fromDate), cutD=new Date(cutDate);
+  const actualDays=Math.max(1,Math.round((cutD-fromD)/86400000));
+  const correctDeduct=Math.floor(actualDays/10), originalDeduct=lv.deductDays||0;
+  const refundNormal=Math.max(0,originalDeduct-correctDeduct);
+  const updated={...lv,cutDate,toDate:cutDate,days:actualDays,isActive:false,deductDays:correctDeduct};
+  await dbPut('leaves',updated);
+  if (refundNormal>0) await addLeaveRecord({facultyId:currentFacultyId,type:'normal-refund',days:refundNormal,fromDate:cutDate,toDate:cutDate,year:lv.year,notes:`استرداد استقطاع زائد عند قطع ${cfg.label} — يُضاف للرصيد الاعتيادي فقط`,autoDeduct:true});
+  leaves=await idbAll('leaves');
+  closeModal('modal-cut-leave'); await renderProfile(currentFacultyId); renderFacultyList(); renderDashboard();
+  showToast(`✅ تم قطع ${cfg.label} والمباشرة بتاريخ ${cutDate}`,'green');
+  const fac=faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`✂️ قطع ${cfg.label} — مباشرة ${cutDate} — ${fac?.name||''}${refundNormal>0?' | استرداد '+refundNormal+' يوم للرصيد الاعتيادي':''}`,'orange');
+}
+
+// ==================== GLOBAL YEAR CLOSE ====================
+const ACTIVE_LEAVE_TYPES_BLOCK=['long','fiveyear','study'];
+function hasActiveBlockingLeave(facultyId) { return leaves.some(l=>l.facultyId===facultyId&&ACTIVE_LEAVE_TYPES_BLOCK.includes(l.type)&&!l.cutDate); }
+
+function openGlobalYearClose() {
+  const years=getYearsList(), cy=currentYear();
+  const ycYear=document.getElementById('yc-year'), ycNew=document.getElementById('yc-new-year');
+  ycYear.innerHTML=years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  const buildNewYears=()=>{ const chosen=ycYear.value; ycNew.innerHTML=years.filter(y=>y>chosen).map(y=>{const[a,b]=chosen.split('/').map(Number);const next=`${b}/${b+1}`;return `<option value="${y}" ${y===next?'selected':''}>${y}</option>`;}).join(''); };
+  buildNewYears(); ycYear.onchange=buildNewYears;
+  document.getElementById('yc-password').value=''; document.getElementById('yc-error').style.display='none';
+  document.getElementById('yc-preview').style.display='none';
+  document.getElementById('yc-step1').style.display='block'; document.getElementById('yc-step2').style.display='none';
+  openModal('modal-year-close');
+}
+async function previewYearClose() {
+  const password=document.getElementById('yc-password').value, errEl=document.getElementById('yc-error');
+  errEl.style.display='none';
+  if (!password) { errEl.textContent='⚠️ الرجاء إدخال الرمز السري'; errEl.style.display='block'; return; }
+  const hash=await sha256(password), account=await getAccountFromIDB(currentUser);
+  if (!account||account.hash!==hash) { errEl.textContent='❌ الرمز السري غير صحيح'; errEl.style.display='block'; return; }
+  const closingYear=document.getElementById('yc-year').value;
+  let totalTransferred=0, rows='';
+  for (const fac of faculty) {
+    const bal=getBalance(fac.id,closingYear), blocked=hasActiveBlockingLeave(fac.id);
+    const transfer=blocked?0:bal.normal;
+    totalTransferred+=transfer;
+    rows+=`<tr><td style="padding:8px 12px;">${fac.name}</td><td style="padding:8px 12px;text-align:center;">${fac.dept||'—'}</td><td style="padding:8px 12px;text-align:center;color:var(--green);font-weight:700;">+${transfer}</td><td style="padding:8px 12px;text-align:center;">${blocked?'<span style="color:#d97706;">إجازة ممتدة نشطة</span>':'<span style="color:var(--green);">✅ سيُرحَّل</span>'}</td></tr>`;
+  }
+  document.getElementById('yc-preview2').innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="background:rgba(99,102,241,0.1);"><th style="padding:8px 12px;text-align:right;">الموظف</th><th style="padding:8px 12px;text-align:center;">القسم</th><th style="padding:8px 12px;text-align:center;">أيام للترحيل</th><th style="padding:8px 12px;text-align:center;">الحالة</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="text-align:center;padding:20px;color:#64748b;">لا يوجد موظفون</td></tr>'}</tbody><tfoot><tr style="background:#f8fafc;"><td colspan="2" style="padding:10px 12px;font-weight:800;">إجمالي الأيام المرحّلة</td><td style="padding:10px 12px;text-align:center;font-weight:900;color:#6366f1;font-size:16px;">+${totalTransferred} يوم</td><td></td></tr></tfoot></table>`;
+  document.getElementById('yc-step1').style.display='none'; document.getElementById('yc-step2').style.display='block';
+}
+async function executeYearClose() {
+  const closingYear=document.getElementById('yc-year').value, newYear=document.getElementById('yc-new-year').value;
+  const today=new Date().toISOString().split('T')[0]; let totalTransferred=0;
+  for (const fac of faculty) {
+    const bal=getBalance(fac.id,closingYear);
+    if (bal.normal>0) { await addLeaveRecord({facultyId:fac.id,type:'cum-add',days:bal.normal,fromDate:today,toDate:today,year:closingYear,notes:`ترحيل رصيد نهاية السنة الدراسية ${closingYear} إلى التراكمي`}); totalTransferred+=bal.normal; }
+  }
+  await dbSetSetting('lastClosedYear',closingYear); await dbSetSetting('activeYear',newYear);
+  leaves=await idbAll('leaves');
+  closeModal('modal-year-close'); renderFacultyList(); renderDashboard(); populateFilters();
+  showToast(`✅ تم إغلاق سنة ${closingYear} | ترحيل ${totalTransferred} يوم للتراكمي | السنة الجديدة: ${newYear}`,'green');
+  await logActivity(`⚡ إغلاق السنة الدراسية ${closingYear} — ترحيل ${totalTransferred} يوم تراكمي لـ ${faculty.length} موظف/تدريسي — السنة الجديدة: ${newYear}`,'orange');
+}
+
+// ==================== DISABLE DEVTOOLS ====================
+(function(){
+  document.addEventListener('contextmenu',e=>e.preventDefault());
+  document.addEventListener('keydown',e=>{
+    const k=e.key,ctrl=e.ctrlKey||e.metaKey,shift=e.shiftKey;
+    if(k==='F12'){e.preventDefault();return false;}
+    if(ctrl&&shift&&(k==='I'||k==='i')){e.preventDefault();return false;}
+    if(ctrl&&shift&&(k==='J'||k==='j')){e.preventDefault();return false;}
+    if(ctrl&&shift&&(k==='C'||k==='c')){e.preventDefault();return false;}
+    if(ctrl&&(k==='U'||k==='u')){e.preventDefault();return false;}
+    if(ctrl&&(k==='S'||k==='s')){e.preventDefault();return false;}
   });
 })();
-</script>
-
-<!-- PWA Install Button -->
-<button id="pwa-install-btn" style="display:none;" onclick="installPWA()">
-  <span class="pwa-icon">📲</span>
-  <span class="pwa-text">تثبيت التطبيق<span>أضف إلى الشاشة الرئيسية</span></span>
-</button>
-
-<!-- iOS Install Banner -->
-<div id="ios-install-banner" style="display:none;">
-  <button class="ios-close" onclick="document.getElementById('ios-install-banner').style.display='none'">✕</button>
-  <div class="ios-title"><img src="icon-apple.png" alt="icon">تثبيت نظام الإجازات</div>
-  <div class="ios-steps">اضغط على زر <strong>المشاركة</strong> ثم اختر <strong>"إضافة إلى الشاشة الرئيسية"</strong></div>
-</div>
-
-<script>
-let deferredPrompt = null;
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(()=>{});
-  });
-}
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault(); deferredPrompt = e;
-  document.getElementById('pwa-install-btn').style.display = 'flex';
-});
-function installPWA() {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  deferredPrompt.userChoice.then(r => {
-    if (r.outcome === 'accepted') { document.getElementById('pwa-install-btn').style.display='none'; showToast('✅ تم تثبيت التطبيق!','green'); }
-    deferredPrompt = null;
-  });
-}
-window.addEventListener('appinstalled', () => { document.getElementById('pwa-install-btn').style.display='none'; });
-if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone && !window.matchMedia('(display-mode: standalone)').matches) {
-  setTimeout(() => { document.getElementById('ios-install-banner').style.display='block'; }, 2500);
-}
 </script>
 </body>
 </html>
