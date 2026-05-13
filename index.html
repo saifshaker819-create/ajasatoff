@@ -1414,9 +1414,23 @@ const SB_HEADERS = {
 };
 
 async function sbGetAll(table) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, { headers: SB_HEADERS });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
+      headers: SB_HEADERS,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`${res.status}: ${txt}`);
+    }
+    return res.json();
+  } catch(e) {
+    clearTimeout(timeout);
+    throw e;
+  }
 }
 
 async function sbUpsert(table, data, onConflict) {
@@ -1540,6 +1554,7 @@ async function pullFromSupabase() {
     }
   } catch(e) {
     console.warn('pullFromSupabase failed:', e);
+    showToast('❌ فشل السحب: ' + e.message, 'red');
   }
 }
 
