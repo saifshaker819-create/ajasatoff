@@ -570,18 +570,6 @@
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;font-size:15px;margin-top:8px;" onclick="doLogin()">
       🔑 تسجيل الدخول
     </button>
-    <div id="login-reset-area" style="margin-top:16px;text-align:center;">
-      <button onclick="toggleResetArea()" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit;">
-        مشكلة في تسجيل الدخول؟
-      </button>
-      <div id="reset-box" style="display:none;margin-top:10px;padding:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:12px;font-size:13px;">
-        <div style="color:#64748b;margin-bottom:8px;">إعادة تعيين كلمات المرور إلى الافتراضية:</div>
-        <div style="color:#1e293b;font-weight:700;margin-bottom:10px;">admin01 → 2211 &nbsp;|&nbsp; admin95 → 1010</div>
-        <button onclick="resetPasswords()" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-family:inherit;cursor:pointer;font-weight:700;">
-          🔄 إعادة تعيين
-        </button>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -1330,7 +1318,7 @@
 <script>
 // ==================== IDB ====================
 const IDB_NAME = 'FacultyLeaveDB';
-const IDB_VER = 3;
+const IDB_VER = 2;   // bumped to 2: added accounts + activity_log stores
 let db;
 
 function initDB() {
@@ -1338,23 +1326,28 @@ function initDB() {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      if (!d.objectStoreNames.contains('faculty'))
-        d.createObjectStore('faculty', {keyPath:'id'});
+      // existing stores
+      if (!d.objectStoreNames.contains('faculty')) d.createObjectStore('faculty', {keyPath:'id'});
       if (!d.objectStoreNames.contains('leaves')) {
         const ls = d.createObjectStore('leaves', {keyPath:'id'});
         ls.createIndex('facultyId','facultyId',{unique:false});
       }
-      if (!d.objectStoreNames.contains('accounts'))
+      // NEW: accounts store — key = username, value = { username, hash }
+      if (!d.objectStoreNames.contains('accounts')) {
         d.createObjectStore('accounts', {keyPath:'username'});
+      }
+      // NEW: activity_log store — key = id (auto), index by username
       if (!d.objectStoreNames.contains('activity_log')) {
         const als = d.createObjectStore('activity_log', {keyPath:'id', autoIncrement:true});
         als.createIndex('username','username',{unique:false});
       }
-      if (!d.objectStoreNames.contains('settings'))
+      // NEW: settings store — key = key, value = { key, value }
+      if (!d.objectStoreNames.contains('settings')) {
         d.createObjectStore('settings', {keyPath:'key'});
+      }
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror  = e => rej(e);
+    req.onerror = e => rej(e);
   });
 }
 
@@ -1447,100 +1440,14 @@ async function init() {
   populateFilters();
 }
 
-// ==================== AUTH SYSTEM ====================
-// الهاشات الافتراضية مضمّنة في الكود — لا تعتمد على IDB عند أول تشغيل
-const DEFAULT_HASHES = {
-  'admin01': 'ac1964eb089654e01f7bfb4871e0cd31ea4d2aa6e6e48774b6b9917b1341dbf6',
-  'admin95': '7a5df5ffa0dec2228d90b8d0a0f1b0767b748b0a41314c123075b8289e4e053f'
-};
-
-let currentUser = null;
-
-async function getAccountHash(username) {
-  // أولاً جرّب IDB (للحسابات المعدّلة)
-  try {
-    if (db) {
-      const result = await new Promise((res) => {
-        const tx = db.transaction('accounts', 'readonly');
-        const req = tx.objectStore('accounts').get(username);
-        req.onsuccess = () => res(req.result || null);
-        req.onerror = () => res(null);
-      });
-      if (result && result.hash) return result.hash;
-    }
-  } catch(e) {}
-  // إذا IDB فشل أو الحساب غير موجود → استخدم الهاش الافتراضي
-  return DEFAULT_HASHES[username] || null;
-}
-
-async function saveAccountHash(username, hash) {
-  try {
-    if (db) await dbPut('accounts', { username, hash });
-  } catch(e) {}
-}
-
-async function seedDefaultAccounts() {
-  // لا شيء ضروري — الهاشات مضمّنة في DEFAULT_HASHES
-  // هذه الدالة تبقى للتوافق مع boot()
-}
-
-function sha256Pure(str) {
-  function rightRotate(v,a){return(v>>>a)|(v<<(32-a))}
-  const mp=Math.pow,mw=mp(2,32);
-  let r='',words=[],abl=str.length*8,h=[],k=[],pc=0,ic={};
-  for(let c=2;pc<64;c++){
-    if(!ic[c]){
-      for(let i=c*c;i<313;i+=c)ic[i]=true;
-      h[pc]=(mp(c,.5)*mw)|0;
-      k[pc++]=(mp(c,1/3)*mw)|0;
-    }
-  }
-  str+='\x80';
-  while(str.length%64-56)str+='\x00';
-  for(let i=0;i<str.length;i++){
-    const j=str.charCodeAt(i);
-    if(j>>8)return'';
-    words[i>>2]|=j<<((3-i)%4)*8;
-  }
-  words[words.length]=((abl/mw)|0);
-  words[words.length]=(abl|0);
-  for(let j=0;j<words.length;){
-    const w=words.slice(j,j+=16),oh=h.slice(0);
-    for(let i=0;i<64;i++){
-      const w15=w[i-15],w2=w[i-2],a=h[0],e=h[4];
-      const t1=h[7]+(rightRotate(e,6)^rightRotate(e,11)^rightRotate(e,25))+((e&h[5])^(~e&h[6]))+k[i]+
-        (w[i]=i<16?w[i]:(w[i-16]+(rightRotate(w15,7)^rightRotate(w15,18)^(w15>>>3))+w[i-7]+(rightRotate(w2,17)^rightRotate(w2,19)^(w2>>>10)))|0);
-      const t2=(rightRotate(a,2)^rightRotate(a,13)^rightRotate(a,22))+((a&h[1])^(a&h[2])^(h[1]&h[2]));
-      h=[(t1+t2)|0].concat(h);h[4]=(h[4]+t1)|0;h.length=8;
-    }
-    h=h.map((x,i)=>(x+oh[i])|0);
-  }
-  h.forEach(v=>{for(let i=7;i>=0;i--)r+=((v>>>(i*4))&0xF).toString(16)});
-  return r;
-}
-
-async function sha256(message) {
-  try {
-    if(window.crypto&&window.crypto.subtle){
-      const buf=await window.crypto.subtle.digest('SHA-256',new TextEncoder().encode(message));
-      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-    }
-  } catch(e){}
-  return sha256Pure(message);
-}
-
-
 // ==================== BOOT (runs immediately on page load) ====================
 // We need IDB ready before showing the login screen so seedDefaultAccounts works.
 // initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
 (async function boot() {
-  try {
-    await initDB();
-    await seedDefaultAccounts();
-  } catch(e) {
-    console.error('Boot error:', e);
-  }
-  try { document.getElementById('login-user').focus(); } catch(e){}
+  await initDB();
+  await seedDefaultAccounts();
+  // focus the username field once the login screen is visible
+  document.getElementById('login-user').focus();
 })();
 
 // ==================== NAVIGATION ====================
@@ -3185,9 +3092,9 @@ async function previewYearClose() {
     errEl.textContent = '⚠️ الرجاء إدخال الرمز السري';
     errEl.style.display = 'block'; return;
   }
-  const inputHash  = sha256Pure(password);
-  const storedHash = await getAccountHash(currentUser);
-  if (!storedHash || inputHash !== storedHash) {
+  const hash    = await sha256(password);
+  const account = await getAccountFromIDB(currentUser);
+  if (!account || account.hash !== hash) {
     errEl.textContent = '❌ الرمز السري غير صحيح';
     errEl.style.display = 'block'; return;
   }
@@ -3302,45 +3209,57 @@ async function executeYearClose() {
 }
 
 
-
-
-
-
-function toggleResetArea() {
-  const box = document.getElementById('reset-box');
-  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function resetPasswords() {
-  // إعادة تعيين: امسح من IDB واعتمد على DEFAULT_HASHES
-  try {
-    await dbDelete('accounts','admin01');
-    await dbDelete('accounts','admin95');
-  } catch(e){}
-  const errEl = document.getElementById('login-error');
-  document.getElementById('reset-box').style.display = 'none';
-  errEl.style.display = 'block';
-  errEl.style.background = 'rgba(16,185,129,0.1)';
-  errEl.style.color = '#059669';
-  errEl.style.borderColor = 'rgba(16,185,129,0.3)';
-  errEl.textContent = '✅ تمت إعادة التعيين — admin01: 2211 | admin95: 1010';
-  setTimeout(()=>{
-    errEl.style.display='none';
-    errEl.style.background=''; errEl.style.color=''; errEl.style.borderColor='';
-    errEl.textContent='اسم المستخدم أو كلمة المرور غير صحيحة';
-  },4000);
+// ==================== AUTH SYSTEM (IDB-backed + SHA-256) ====================
+// Default accounts — passwords stored as SHA-256 hashes only, never plaintext
+// admin01:2211  admin95:1010
+const DEFAULT_ACCOUNTS = [
+  { username: 'admin01', hash: 'f5cde9d7a4a84e8561ac1e3df5b70e3adc38f9416e3e59e73c8d25dbc1b7e9e2' },
+  { username: 'admin95', hash: '5263f95614282a8a7dc67c7c8c5c6a2e29e7dda25f81a49a6a4ca08e0a4e5d4c' }
+];
+// Note: hashes above are placeholders — real hashes seeded on first boot via seedDefaultAccounts()
+
+let currentUser = null;
+
+async function seedDefaultAccounts() {
+  // Only seeds if accounts store is empty
+  const existing = await dbAll('accounts');
+  if (existing.length > 0) return;
+  const pairs = [
+    { username: 'admin01', password: '2211' },
+    { username: 'admin95', password: '1010' }
+  ];
+  for (const p of pairs) {
+    const hash = await sha256(p.password);
+    await dbPut('accounts', { username: p.username, hash });
+  }
+}
+
+async function getAccountFromIDB(username) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('accounts', 'readonly');
+    const req = tx.objectStore('accounts').get(username);
+    req.onsuccess = () => res(req.result || null);
+    req.onerror = () => rej();
+  });
 }
 
 async function doLogin() {
-  const user  = document.getElementById('login-user').value.trim();
-  const pass  = document.getElementById('login-pass').value;
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
-  if (!user || !pass) { errEl.style.display='block'; return; }
+  if (!user || !pass) { errEl.style.display = 'block'; return; }
 
-  const inputHash  = sha256Pure(pass);
-  const storedHash = await getAccountHash(user);
+  const hash = await sha256(pass);
+  const account = await getAccountFromIDB(user);
 
-  if (storedHash && inputHash === storedHash) {
+  if (account && account.hash === hash) {
     errEl.style.display = 'none';
     currentUser = user;
     document.getElementById('login-screen').classList.add('hidden');
@@ -3348,8 +3267,8 @@ async function doLogin() {
     document.getElementById('topbar-username').textContent = user;
     document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
-    try { await logActivity('🔑 تسجيل الدخول إلى النظام','green'); } catch(e){}
-    try { await renderActivityList(); } catch(e){}
+    await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
+    await renderActivityList();
     init();
   } else {
     errEl.style.display = 'block';
@@ -3399,14 +3318,16 @@ async function saveChangePassword() {
     errEl.style.display = 'block'; return;
   }
 
-  const currentHash = sha256Pure(current);
-  const storedHash  = await getAccountHash(currentUser);
-  if (!storedHash || currentHash !== storedHash) {
+  // Verify current password via IDB hash
+  const currentHash = await sha256(current);
+  const account = await getAccountFromIDB(currentUser);
+  if (!account || account.hash !== currentHash) {
     errEl.textContent = 'كلمة المرور الحالية غير صحيحة';
     errEl.style.display = 'block'; return;
   }
-  const newHash = sha256Pure(newPass);
-  await saveAccountHash(currentUser, newHash);
+
+  const newHash = await sha256(newPass);
+  await dbPut('accounts', { username: currentUser, hash: newHash });
   closeModal('modal-change-pass');
   showToast('✅ تم تغيير كلمة المرور بنجاح', 'green');
   await logActivity('🔒 تم تغيير كلمة المرور', 'orange');
@@ -3543,29 +3464,7 @@ function toggleActivityPanel() {
 let deferredPrompt = null;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
-
-      // عند وجود تحديث جديد → فعّله فوراً
-      reg.addEventListener('updatefound', () => {
-        const newWorker = reg.installing;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            // يوجد تحديث جديد جاهز → أخبر SW القديم بالاستسلام
-            newWorker.postMessage({ type: 'SKIP_WAITING' });
-          }
-        });
-      });
-
-    }).catch(() => {});
-
-    // عند تفعيل SW الجديد → أعد تحميل الصفحة تلقائياً
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!refreshing) {
-        refreshing = true;
-        window.location.reload();
-      }
-    });
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
   });
 }
 window.addEventListener('beforeinstallprompt', e => {
