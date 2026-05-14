@@ -1453,11 +1453,81 @@ async function init() {
 }
 
 // ==================== AUTH SYSTEM ====================
+// SHA-256 بدون crypto.subtle — يعمل في كل البيئات
 async function sha256(message) {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  // نحاول crypto.subtle أولاً (HTTPS)
+  if (window.crypto && window.crypto.subtle) {
+    try {
+      const msgBuffer = new TextEncoder().encode(message);
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch(e) {}
+  }
+  // fallback: SHA-256 خالص بـ JavaScript
+  return sha256Pure(message);
+}
+
+function sha256Pure(str) {
+  function rightRotate(value, amount) {
+    return (value >>> amount) | (value << (32 - amount));
+  }
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  let result = '';
+  const words = [];
+  const asciiBitLength = str.length * 8;
+  let hash = [];
+  let k = [];
+  let primeCounter = 0;
+  const isComposite = {};
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (let i = candidate * candidate; i < 313; i += candidate) isComposite[i] = true;
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (mathPow(candidate, 1/3) * maxWord) | 0;
+    }
+  }
+  str += '\x80';
+  while (str.length % 64 - 56) str += '\x00';
+  for (let i = 0; i < str.length; i++) {
+    const j = str.charCodeAt(i);
+    if (j >> 8) return '';
+    words[i >> 2] |= j << ((3 - i) % 4) * 8;
+  }
+  words[words.length] = ((asciiBitLength / maxWord) | 0);
+  words[words.length] = (asciiBitLength | 0);
+  for (let j = 0; j < words.length;) {
+    const w = words.slice(j, j += 16);
+    const oldHash = hash.slice(0);
+    for (let i = 0; i < 64; i++) {
+      const i2 = i + j - 16;
+      const w15 = w[i - 15], w2 = w[i - 2];
+      const a = hash[0], e = hash[4];
+      const temp1 = hash[7]
+        + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+        + ((e & hash[5]) ^ (~e & hash[6]))
+        + k[i]
+        + (w[i] = i < 16 ? w[i] : (
+          w[i - 16]
+          + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+          + w[i - 7]
+          + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+        ) | 0);
+      const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1 + temp2) | 0].concat(hash);
+      hash[4] = (hash[4] + temp1) | 0;
+      hash.length = 8;
+    }
+    hash = hash.map((x, i) => (x + oldHash[i]) | 0);
+  }
+  hash.forEach(val => {
+    for (let i = 7; i >= 0; i--) {
+      result += ((val >>> (i * 4)) & 0xF).toString(16);
+    }
+  });
+  return result;
 }
 
 let currentUser = null;
@@ -1479,7 +1549,7 @@ async function seedDefaultAccounts() {
   for (const p of pairs) {
     const existing = await getAccountFromIDB(p.username).catch(()=>null);
     if (!existing) {
-      const hash = await sha256(p.password);
+      const hash = sha256Pure(p.password);
       await dbPut('accounts', { username: p.username, hash });
     }
   }
@@ -3137,7 +3207,7 @@ async function previewYearClose() {
     errEl.textContent = '⚠️ الرجاء إدخال الرمز السري';
     errEl.style.display = 'block'; return;
   }
-  const hash    = await sha256(password);
+  const hash    = sha256Pure(password);
   const account = await getAccountFromIDB(currentUser);
   if (!account || account.hash !== hash) {
     errEl.textContent = '❌ الرمز السري غير صحيح';
@@ -3269,11 +3339,10 @@ async function resetPasswords() {
     { username: 'admin95', password: '1010' }
   ];
   for (const p of pairs) {
-    const hash = await sha256(p.password);
+    const hash = sha256Pure(p.password);
     await dbPut('accounts', { username: p.username, hash });
   }
   document.getElementById('reset-box').style.display = 'none';
-  document.getElementById('login-error').style.display = 'none';
   const errEl = document.getElementById('login-error');
   errEl.style.display = 'block';
   errEl.style.background = 'rgba(16,185,129,0.1)';
@@ -3290,25 +3359,38 @@ async function resetPasswords() {
 }
 
 async function doLogin() {
-  const user = document.getElementById('login-user').value.trim();
-  const pass = document.getElementById('login-pass').value;
+  const user  = document.getElementById('login-user').value.trim();
+  const pass  = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
   if (!user || !pass) { errEl.style.display = 'block'; return; }
 
-  const hash = await sha256(pass);
   const account = await getAccountFromIDB(user);
 
-  if (account && account.hash === hash) {
-    errEl.style.display = 'none';
-    currentUser = user;
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('user-topbar').style.display = 'flex';
-    document.getElementById('topbar-username').textContent = user;
-    document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
-    document.getElementById('activity-panel-username').textContent = '👤 ' + user;
-    await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
-    await renderActivityList();
-    init();
+  if (account) {
+    // نجرب الهاش الحالي
+    const hash1 = await sha256(pass);
+    // نجرب sha256Pure مباشرة كاحتياط
+    const hash2 = sha256Pure(pass);
+
+    if (account.hash === hash1 || account.hash === hash2) {
+      // تحديث الهاش المخزّن بالنسخة الجديدة
+      await dbPut('accounts', { username: user, hash: hash1 });
+
+      errEl.style.display = 'none';
+      currentUser = user;
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('user-topbar').style.display = 'flex';
+      document.getElementById('topbar-username').textContent = user;
+      document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
+      document.getElementById('activity-panel-username').textContent = '👤 ' + user;
+      await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
+      await renderActivityList();
+      init();
+    } else {
+      errEl.style.display = 'block';
+      document.getElementById('login-pass').value = '';
+      document.getElementById('login-pass').focus();
+    }
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
@@ -3358,14 +3440,14 @@ async function saveChangePassword() {
   }
 
   // Verify current password via IDB hash
-  const currentHash = await sha256(current);
+  const currentHash = sha256Pure(current);
   const account = await getAccountFromIDB(currentUser);
-  if (!account || account.hash !== currentHash) {
+  if (!account || (account.hash !== currentHash && account.hash !== await sha256(current))) {
     errEl.textContent = 'كلمة المرور الحالية غير صحيحة';
     errEl.style.display = 'block'; return;
   }
 
-  const newHash = await sha256(newPass);
+  const newHash = sha256Pure(newPass);
   await dbPut('accounts', { username: currentUser, hash: newHash });
   closeModal('modal-change-pass');
   showToast('✅ تم تغيير كلمة المرور بنجاح', 'green');
