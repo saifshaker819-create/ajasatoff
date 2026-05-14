@@ -658,9 +658,6 @@
     <div class="nav-item" onclick="showPage('database')">
       <span class="icon">🗄️</span> قاعدة البيانات
     </div>
-    <div class="nav-item" onclick="openGlobalYearClose()" style="background:linear-gradient(135deg,rgba(245,158,11,0.13),rgba(249,115,22,0.08));border:1px solid rgba(245,158,11,0.25);color:#92400e;font-weight:800;">
-      <span class="icon">⚡</span> إغلاق السنة وترحيل الإجازات
-    </div>
     <div class="activity-toggle-btn" onclick="toggleActivityPanel()">
       <span class="icon">📋</span> سجل العمليات
       <span class="nav-badge" id="activity-count-badge" style="display:none;">0</span>
@@ -1248,57 +1245,6 @@
   </div>
 </div>
 
-<!-- Global Year Close Modal -->
-<div class="modal-overlay" id="modal-year-close">
-  <div class="modal modal-lg">
-    <div class="modal-header" style="background:linear-gradient(135deg,rgba(245,158,11,0.12),rgba(249,115,22,0.07));border-bottom:1px solid rgba(245,158,11,0.2);">
-      <div class="modal-title" style="color:#92400e;">⚡ إغلاق السنة الدراسية وترحيل الإجازات</div>
-      <button class="modal-close" onclick="closeModal('modal-year-close')">✕</button>
-    </div>
-
-    <!-- Step 1: choose year + enter password -->
-    <div id="yc-step1">
-      <div style="padding:4px 0 14px;font-size:14px;color:#64748b;line-height:1.8;">
-        سيتم تحويل <strong>الرصيد الاعتيادي المتبقي</strong> لكل موظف وتدريسي إلى الرصيد التراكمي،
-        ثم يبدأ النظام سنةً دراسيةً جديدة برصيد اعتيادي ومرضي جديد.<br>
-        <span style="color:#d97706;font-weight:700;">⚠️ الموظفون الذين لديهم إجازة طويلة أو 5 سنوات أو دراسية نشطة لن يُعاد لهم الرصيد الاعتيادي فوراً — يُستقطع منهم كل 10 أيام يوم.</span>
-      </div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">السنة الدراسية المراد إغلاقها *</label>
-          <select class="form-select" id="yc-year"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">السنة الدراسية الجديدة (القادمة) *</label>
-          <select class="form-select" id="yc-new-year"></select>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">🔑 أدخل رمزك السري للتأكيد *</label>
-        <input class="form-input" id="yc-password" type="password" placeholder="كلمة المرور" autocomplete="off">
-      </div>
-      <div id="yc-error" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:var(--red);border-radius:10px;padding:9px 14px;font-size:14px;font-weight:600;margin-bottom:10px;"></div>
-      <div id="yc-preview" style="display:none;"></div>
-      <div class="modal-footer">
-        <button class="btn" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="previewYearClose()">🔍 معاينة التأثير</button>
-        <button class="btn btn-outline" onclick="closeModal('modal-year-close')">إلغاء</button>
-      </div>
-    </div>
-
-    <!-- Step 2: confirm after preview -->
-    <div id="yc-step2" style="display:none;">
-      <div id="yc-preview2" style="max-height:380px;overflow-y:auto;margin-bottom:16px;"></div>
-      <div style="padding:12px 16px;border-radius:10px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.18);font-size:14px;color:#dc2626;font-weight:700;margin-bottom:16px;">
-        ⚠️ هذه العملية لا يمكن التراجع عنها. تأكد من البيانات قبل المتابعة.
-      </div>
-      <div class="modal-footer">
-        <button class="btn" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;box-shadow:0 4px 14px rgba(239,68,68,0.3);" onclick="executeYearClose()">✅ تأكيد إغلاق السنة والترحيل</button>
-        <button class="btn btn-outline" onclick="document.getElementById('yc-step2').style.display='none';document.getElementById('yc-step1').style.display='block';">◀ رجوع</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Confirm Delete -->
 <div class="modal-overlay" id="modal-confirm">
   <div class="modal modal-sm">
@@ -1703,10 +1649,10 @@ function renderProfile(id) {
         <div class="leave-block-sub">مستخدم: ${bal.sickUsed} من ${SICK_DAYS} يوم</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
       </div>
-      <div class="leave-block" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(249,115,22,0.05));border:1px dashed rgba(245,158,11,0.4);">
+      <div class="leave-block" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(249,115,22,0.05));cursor:pointer;" onclick="closeYearBalance('${id}')">
         <div class="leave-block-title">⚡ إغلاق السنة</div>
-        <div class="leave-block-val" style="color:var(--orange);font-size:14px;margin-top:8px;">يتم من الشريط الجانبي</div>
-        <div class="leave-block-sub" style="margin-top:4px;">استخدم زر "إغلاق السنة وترحيل الإجازات" في القائمة الجانبية لترحيل جميع الموظفين دفعة واحدة</div>
+        <div class="leave-block-val" style="color:var(--orange);font-size:16px;margin-top:8px;">نقل الرصيد للتراكمي</div>
+        <div class="leave-block-sub" style="margin-top:4px;">يُنقل الرصيد الاعتيادي المتبقي إلى التراكمي</div>
       </div>
       ${extBlocks}
     </div>
@@ -3038,172 +2984,6 @@ async function confirmCutLeave() {
   await logActivity(
     `✂️ قطع ${cfg.label} — مباشرة ${cutDate} — ${fac?.name||''}` +
     (refundNormal > 0 ? ` | استرداد ${refundNormal} يوم للرصيد الاعتيادي` : ''),
-    'orange'
-  );
-}
-
-
-// ==================== GLOBAL YEAR CLOSE ====================
-const ACTIVE_LEAVE_TYPES_BLOCK = ['long','fiveyear','study'];
-
-function hasActiveBlockingLeave(facultyId) {
-  return leaves.some(l =>
-    l.facultyId === facultyId &&
-    ACTIVE_LEAVE_TYPES_BLOCK.includes(l.type) &&
-    !l.cutDate
-  );
-}
-
-function openGlobalYearClose() {
-  const years = getYearsList();
-  const cy = currentYear();
-  const ycYear = document.getElementById('yc-year');
-  const ycNew  = document.getElementById('yc-new-year');
-
-  ycYear.innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-
-  const buildNewYears = () => {
-    const chosen = ycYear.value;
-    ycNew.innerHTML = years
-      .filter(y => y > chosen)
-      .map(y => {
-        const [a,b] = chosen.split('/').map(Number);
-        const next = `${b}/${b+1}`;
-        return `<option value="${y}" ${y===next?'selected':''}>${y}</option>`;
-      }).join('');
-  };
-  buildNewYears();
-  ycYear.onchange = buildNewYears;
-
-  document.getElementById('yc-password').value = '';
-  document.getElementById('yc-error').style.display = 'none';
-  document.getElementById('yc-preview').style.display = 'none';
-  document.getElementById('yc-step1').style.display = 'block';
-  document.getElementById('yc-step2').style.display = 'none';
-  openModal('modal-year-close');
-}
-
-async function previewYearClose() {
-  const password    = document.getElementById('yc-password').value;
-  const errEl       = document.getElementById('yc-error');
-  errEl.style.display = 'none';
-
-  if (!password) {
-    errEl.textContent = '⚠️ الرجاء إدخال الرمز السري';
-    errEl.style.display = 'block'; return;
-  }
-  const hash    = await sha256(password);
-  const account = await getAccountFromIDB(currentUser);
-  if (!account || account.hash !== hash) {
-    errEl.textContent = '❌ الرمز السري غير صحيح';
-    errEl.style.display = 'block'; return;
-  }
-
-  const closingYear = document.getElementById('yc-year').value;
-  const newYear     = document.getElementById('yc-new-year').value;
-
-  if (!newYear || closingYear === newYear) {
-    errEl.textContent = '⚠️ يرجى اختيار سنة جديدة مختلفة';
-    errEl.style.display = 'block'; return;
-  }
-
-  // بناء جدول المعاينة
-  let rows = '';
-  let totalTransferred = 0;
-
-  faculty.forEach(fac => {
-    const bal         = getBalance(fac.id, closingYear);
-    const hasBlocking = hasActiveBlockingLeave(fac.id);
-    const nd          = getNormalDays(fac.id);
-    const transferDays = Math.max(0, bal.normal);
-    const typeLabel   = fac.type === 'instructor' ? '🎓' : '👨‍💼';
-
-    const blockNote = hasBlocking
-      ? `<span style="color:#d97706;font-size:12px;font-weight:700;">⚠️ له إجازة نشطة — يُستقطع كل 10 أيام يوم</span>`
-      : `<span style="color:#059669;font-size:12px;font-weight:700;">✅ رصيد جديد: ${nd} اعتيادية + 30 مرضية</span>`;
-
-    totalTransferred += transferDays;
-
-    rows += `<tr style="background:${hasBlocking?'rgba(245,158,11,0.05)':'rgba(16,185,129,0.03)'}">
-      <td style="padding:8px 12px;font-weight:700;border-bottom:1px solid #f1f5f9;">${typeLabel} ${fac.name}</td>
-      <td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${fac.dept||'—'}</td>
-      <td style="padding:8px 12px;text-align:center;border-bottom:1px solid #f1f5f9;">
-        ${transferDays > 0
-          ? `<span style="background:rgba(99,102,241,0.1);color:#6366f1;padding:2px 10px;border-radius:8px;font-weight:800;">+${transferDays} يوم</span>`
-          : `<span style="color:#94a3b8;">—</span>`}
-      </td>
-      <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;">${blockNote}</td>
-    </tr>`;
-  });
-
-  document.getElementById('yc-preview2').innerHTML = `
-    <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:12px;">
-      📊 معاينة إغلاق سنة <span style="color:#6366f1;">${closingYear}</span> والانتقال إلى <span style="color:#059669;">${newYear}</span>
-    </div>
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <thead><tr style="background:linear-gradient(135deg,#6366f1,#2563eb);">
-          <th style="padding:10px 12px;color:#fff;text-align:right;">الموظف / التدريسي</th>
-          <th style="padding:10px 12px;color:#fff;text-align:right;">القسم</th>
-          <th style="padding:10px 12px;color:#fff;text-align:center;">يُرحَّل للتراكمي</th>
-          <th style="padding:10px 12px;color:#fff;text-align:right;">الرصيد الجديد</th>
-        </tr></thead>
-        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:20px;color:#64748b;">لا يوجد موظفون</td></tr>'}</tbody>
-        <tfoot><tr style="background:#f8fafc;">
-          <td colspan="2" style="padding:10px 12px;font-weight:800;">إجمالي الأيام المرحّلة</td>
-          <td style="padding:10px 12px;text-align:center;font-weight:900;color:#6366f1;font-size:16px;">+${totalTransferred} يوم</td>
-          <td></td>
-        </tr></tfoot>
-      </table>
-    </div>`;
-
-  document.getElementById('yc-step1').style.display = 'none';
-  document.getElementById('yc-step2').style.display = 'block';
-}
-
-async function executeYearClose() {
-  const closingYear = document.getElementById('yc-year').value;
-  const newYear     = document.getElementById('yc-new-year').value;
-  const today       = new Date().toISOString().split('T')[0];
-  let totalTransferred = 0;
-
-  for (const fac of faculty) {
-    const bal = getBalance(fac.id, closingYear);
-
-    // ترحيل الرصيد الاعتيادي المتبقي → تراكمي لكل موظف لديه رصيد
-    if (bal.normal > 0) {
-      await addLeaveRecord({
-        facultyId: fac.id,
-        type: 'cum-add',
-        days: bal.normal,
-        fromDate: today,
-        toDate: today,
-        year: closingYear,
-        notes: `ترحيل رصيد نهاية السنة الدراسية ${closingYear} إلى التراكمي`,
-      });
-      totalTransferred += bal.normal;
-    }
-    // ملاحظة: لا يلزم إنشاء سجلات للسنة الجديدة.
-    // getBalance() تعتمد على الثوابت (36/15 اعتيادية، 30 مرضية) + سجلات الاستخدام.
-    // الموظف صاحب الإجازة الموسّعة النشطة: الاستقطاع التلقائي كل 10 أيام مسجّل مسبقاً
-    // في سجل الإجازة الموسّعة ذاتها، وسيظل سارياً في السنة الجديدة حتى انتهاء الإجازة أو قطعها.
-  }
-
-  await dbSetSetting('lastClosedYear', closingYear);
-  await dbSetSetting('activeYear', newYear);
-
-  leaves = await dbAll('leaves');
-  closeModal('modal-year-close');
-  renderFacultyList();
-  renderDashboard();
-  populateFilters();
-
-  showToast(
-    `✅ تم إغلاق سنة ${closingYear} | ترحيل ${totalTransferred} يوم للتراكمي | السنة الجديدة: ${newYear}`,
-    'green'
-  );
-  await logActivity(
-    `⚡ إغلاق السنة الدراسية ${closingYear} — ترحيل ${totalTransferred} يوم تراكمي لـ ${faculty.length} موظف/تدريسي — السنة الجديدة: ${newYear}`,
     'orange'
   );
 }
