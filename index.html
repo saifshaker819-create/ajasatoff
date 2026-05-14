@@ -990,7 +990,7 @@
         <label class="form-label">الجنس *</label>
         <select class="form-select" id="f-gender">
           <option value="">-- اختر الجنس --</option>
-          <option value="male">ذكر 👨</option>
+          <option value="male" selected>ذكر 👨</option>
           <option value="female">أنثى 👩</option>
         </select>
       </div>
@@ -1352,7 +1352,7 @@ function initDB() {
 }
 
 async function ensureDB() {
-  if (!db) { await initDB(); await seedDefaultAccounts(); }
+  if (!db) { await initDB(); }
 }
 
 function dbAll(store) {
@@ -1765,7 +1765,7 @@ function openAddFaculty(type) {
   document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 إضافة تدريسي جديد' : '👨‍💼 إضافة موظف جديد';
   ['f-name','f-dept','f-empno','f-hire','f-rank'].forEach(id => document.getElementById(id).value='');
   document.getElementById('f-cumulative').value='0';
-  document.getElementById('f-gender').value='';
+  document.getElementById('f-gender').value='male';
   document.getElementById('f-type').value = type || 'employee';
   const badge = document.getElementById('f-type-badge');
   badge.style.display='block';
