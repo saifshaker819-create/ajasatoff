@@ -1452,6 +1452,39 @@ async function init() {
   populateFilters();
 }
 
+// ==================== AUTH SYSTEM ====================
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+let currentUser = null;
+
+async function getAccountFromIDB(username) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction('accounts', 'readonly');
+    const req = tx.objectStore('accounts').get(username);
+    req.onsuccess = () => res(req.result || null);
+    req.onerror = () => res(null);
+  });
+}
+
+async function seedDefaultAccounts() {
+  const pairs = [
+    { username: 'admin01', password: '2211' },
+    { username: 'admin95', password: '1010' }
+  ];
+  for (const p of pairs) {
+    const existing = await getAccountFromIDB(p.username).catch(()=>null);
+    if (!existing) {
+      const hash = await sha256(p.password);
+      await dbPut('accounts', { username: p.username, hash });
+    }
+  }
+}
+
 // ==================== BOOT (runs immediately on page load) ====================
 // We need IDB ready before showing the login screen so seedDefaultAccounts works.
 // initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
@@ -3221,49 +3254,9 @@ async function executeYearClose() {
 }
 
 
-async function sha256(message) {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
-// ==================== AUTH SYSTEM (IDB-backed + SHA-256) ====================
-// Default accounts — passwords stored as SHA-256 hashes only, never plaintext
-// admin01:2211  admin95:1010
-const DEFAULT_ACCOUNTS = [
-  { username: 'admin01', hash: 'f5cde9d7a4a84e8561ac1e3df5b70e3adc38f9416e3e59e73c8d25dbc1b7e9e2' },
-  { username: 'admin95', hash: '5263f95614282a8a7dc67c7c8c5c6a2e29e7dda25f81a49a6a4ca08e0a4e5d4c' }
-];
-// Note: hashes above are placeholders — real hashes seeded on first boot via seedDefaultAccounts()
 
-let currentUser = null;
 
-async function seedDefaultAccounts() {
-  // دائماً تتحقق وتُصلح الهاشات — لا تعتمد على "empty check" فقط
-  const pairs = [
-    { username: 'admin01', password: '2211' },
-    { username: 'admin95', password: '1010' }
-  ];
-  for (const p of pairs) {
-    const existing = await getAccountFromIDB(p.username).catch(()=>null);
-    if (!existing) {
-      // حساب غير موجود — أضفه
-      const hash = await sha256(p.password);
-      await dbPut('accounts', { username: p.username, hash });
-    }
-    // إذا موجود نتركه كما هو (قد يكون المستخدم غيّر كلمته)
-  }
-}
-
-async function getAccountFromIDB(username) {
-  return new Promise((res, rej) => {
-    const tx = db.transaction('accounts', 'readonly');
-    const req = tx.objectStore('accounts').get(username);
-    req.onsuccess = () => res(req.result || null);
-    req.onerror = () => rej();
-  });
-}
 
 function toggleResetArea() {
   const box = document.getElementById('reset-box');
