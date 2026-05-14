@@ -1426,7 +1426,7 @@ function getYearsList() {
 
 // ==================== INIT ====================
 async function init() {
-  if (!db) { await initDB(); await seedDefaultAccounts(); }
+  if (!db) { try { await initDB(); await seedDefaultAccounts(); } catch(e) {} }
   faculty = await dbAll('faculty');
   leaves  = await dbAll('leaves');
 
@@ -3255,16 +3255,34 @@ async function doLogin() {
   const errEl = document.getElementById('login-error');
   if (!user || !pass) { errEl.style.display = 'block'; return; }
 
-  // تأكد أن قاعدة البيانات مفتوحة قبل أي عملية
-  if (!db) {
-    try { await initDB(); await seedDefaultAccounts(); } catch(e) {
-      errEl.textContent = 'خطأ في قاعدة البيانات، أعد تحميل الصفحة';
-      errEl.style.display = 'block'; return;
+  const hash = await sha256(pass);
+
+  // تحقق من الحساب: أولاً IDB، ثم fallback للحسابات الافتراضية
+  let account = null;
+  try {
+    if (!db) { await initDB(); await seedDefaultAccounts(); }
+    account = await getAccountFromIDB(user);
+    // إذا كانت IDB فارغة (أول تشغيل فشل seed) نعيد السيد ثم نجرب مجدداً
+    if (!account) {
+      await seedDefaultAccounts();
+      account = await getAccountFromIDB(user);
+    }
+  } catch(e) {}
+
+  // fallback: تحقق من الحسابات الافتراضية مباشرة
+  if (!account) {
+    const FALLBACK = [
+      { username: 'admin01', password: '2211' },
+      { username: 'admin95', password: '1010' }
+    ];
+    const match = FALLBACK.find(x => x.username === user);
+    if (match) {
+      const fHash = await sha256(match.password);
+      account = { username: match.username, hash: fHash };
+      // احفظها في IDB للمرات القادمة
+      try { if (db) await dbPut('accounts', account); } catch(e) {}
     }
   }
-
-  const hash = await sha256(pass);
-  const account = await getAccountFromIDB(user);
 
   if (account && account.hash === hash) {
     errEl.style.display = 'none';
@@ -3274,9 +3292,9 @@ async function doLogin() {
     document.getElementById('topbar-username').textContent = user;
     document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
-    await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
-    await renderActivityList();
-    init();
+    try { await logActivity('🔑 تسجيل الدخول إلى النظام', 'green'); } catch(e) {}
+    try { await renderActivityList(); } catch(e) {}
+    try { await init(); } catch(e) {}
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
