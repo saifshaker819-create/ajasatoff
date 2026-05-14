@@ -1330,7 +1330,7 @@
 <script>
 // ==================== IDB ====================
 const IDB_NAME = 'FacultyLeaveDB';
-const IDB_VER = 2;   // bumped to 2: added accounts + activity_log stores
+const IDB_VER = 3;
 let db;
 
 function initDB() {
@@ -1338,28 +1338,23 @@ function initDB() {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      // existing stores
-      if (!d.objectStoreNames.contains('faculty')) d.createObjectStore('faculty', {keyPath:'id'});
+      if (!d.objectStoreNames.contains('faculty'))
+        d.createObjectStore('faculty', {keyPath:'id'});
       if (!d.objectStoreNames.contains('leaves')) {
         const ls = d.createObjectStore('leaves', {keyPath:'id'});
         ls.createIndex('facultyId','facultyId',{unique:false});
       }
-      // NEW: accounts store — key = username, value = { username, hash }
-      if (!d.objectStoreNames.contains('accounts')) {
+      if (!d.objectStoreNames.contains('accounts'))
         d.createObjectStore('accounts', {keyPath:'username'});
-      }
-      // NEW: activity_log store — key = id (auto), index by username
       if (!d.objectStoreNames.contains('activity_log')) {
         const als = d.createObjectStore('activity_log', {keyPath:'id', autoIncrement:true});
         als.createIndex('username','username',{unique:false});
       }
-      // NEW: settings store — key = key, value = { key, value }
-      if (!d.objectStoreNames.contains('settings')) {
+      if (!d.objectStoreNames.contains('settings'))
         d.createObjectStore('settings', {keyPath:'key'});
-      }
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror = e => rej(e);
+    req.onerror  = e => rej(e);
   });
 }
 
@@ -1559,10 +1554,13 @@ async function seedDefaultAccounts() {
 // We need IDB ready before showing the login screen so seedDefaultAccounts works.
 // initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
 (async function boot() {
-  await initDB();
-  await seedDefaultAccounts();
-  // focus the username field once the login screen is visible
-  document.getElementById('login-user').focus();
+  try {
+    await initDB();
+    await seedDefaultAccounts();
+  } catch(e) {
+    console.error('Boot error:', e);
+  }
+  try { document.getElementById('login-user').focus(); } catch(e){}
 })();
 
 // ==================== NAVIGATION ====================
@@ -3364,18 +3362,14 @@ async function doLogin() {
   const errEl = document.getElementById('login-error');
   if (!user || !pass) { errEl.style.display = 'block'; return; }
 
-  const account = await getAccountFromIDB(user);
+  try {
+    const account = await getAccountFromIDB(user);
+    const hash1 = sha256Pure(pass);
+    let hash2 = hash1;
+    try { hash2 = await sha256(pass); } catch(e){}
 
-  if (account) {
-    // نجرب الهاش الحالي
-    const hash1 = await sha256(pass);
-    // نجرب sha256Pure مباشرة كاحتياط
-    const hash2 = sha256Pure(pass);
-
-    if (account.hash === hash1 || account.hash === hash2) {
-      // تحديث الهاش المخزّن بالنسخة الجديدة
+    if (account && (account.hash === hash1 || account.hash === hash2)) {
       await dbPut('accounts', { username: user, hash: hash1 });
-
       errEl.style.display = 'none';
       currentUser = user;
       document.getElementById('login-screen').classList.add('hidden');
@@ -3383,18 +3377,18 @@ async function doLogin() {
       document.getElementById('topbar-username').textContent = user;
       document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
       document.getElementById('activity-panel-username').textContent = '👤 ' + user;
-      await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
-      await renderActivityList();
+      try { await logActivity('🔑 تسجيل الدخول إلى النظام', 'green'); } catch(e){}
+      try { await renderActivityList(); } catch(e){}
       init();
     } else {
       errEl.style.display = 'block';
       document.getElementById('login-pass').value = '';
       document.getElementById('login-pass').focus();
     }
-  } else {
+  } catch(e) {
+    console.error('Login error:', e);
+    errEl.textContent = 'خطأ في النظام — حاول مرة أخرى';
     errEl.style.display = 'block';
-    document.getElementById('login-pass').value = '';
-    document.getElementById('login-pass').focus();
   }
 }
 
