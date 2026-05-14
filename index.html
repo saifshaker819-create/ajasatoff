@@ -990,7 +990,7 @@
         <label class="form-label">الجنس *</label>
         <select class="form-select" id="f-gender">
           <option value="">-- اختر الجنس --</option>
-          <option value="male" selected>ذكر 👨</option>
+          <option value="male">ذكر 👨</option>
           <option value="female">أنثى 👩</option>
         </select>
       </div>
@@ -1351,51 +1351,47 @@ function initDB() {
   });
 }
 
-async function ensureDB() {
-  if (!db) { await initDB(); }
-}
-
 function dbAll(store) {
-  return ensureDB().then(() => new Promise((res, rej) => {
+  return new Promise((res, rej) => {
     const tx = db.transaction(store,'readonly');
     const req = tx.objectStore(store).getAll();
     req.onsuccess = () => res(req.result);
     req.onerror = () => rej();
-  }));
+  });
 }
 function dbPut(store, obj) {
-  return ensureDB().then(() => new Promise((res, rej) => {
+  return new Promise((res, rej) => {
     const tx = db.transaction(store,'readwrite');
     const req = tx.objectStore(store).put(obj);
     req.onsuccess = () => res();
     req.onerror = () => rej();
-  }));
+  });
 }
 function dbDelete(store, id) {
-  return ensureDB().then(() => new Promise((res, rej) => {
+  return new Promise((res, rej) => {
     const tx = db.transaction(store,'readwrite');
     const req = tx.objectStore(store).delete(id);
     req.onsuccess = () => res();
     req.onerror = () => rej();
-  }));
+  });
 }
 
 // Settings helpers (IDB-backed, replaces all localStorage usage)
 function dbGetSetting(key) {
-  return ensureDB().then(() => new Promise((res) => {
+  return new Promise((res, rej) => {
     const tx = db.transaction('settings','readonly');
     const req = tx.objectStore('settings').get(key);
     req.onsuccess = () => res(req.result ? req.result.value : null);
     req.onerror = () => res(null);
-  }));
+  });
 }
 function dbSetSetting(key, value) {
-  return ensureDB().then(() => new Promise((res, rej) => {
+  return new Promise((res, rej) => {
     const tx = db.transaction('settings','readwrite');
     const req = tx.objectStore('settings').put({ key, value });
     req.onsuccess = () => res();
     req.onerror = () => rej();
-  }));
+  });
 }
 
 // ==================== STATE ====================
@@ -1430,7 +1426,8 @@ function getYearsList() {
 
 // ==================== INIT ====================
 async function init() {
-  if (!db) { try { await initDB(); await seedDefaultAccounts(); } catch(e) {} }
+  await initDB();
+  await seedDefaultAccounts();   // seed hashed passwords into IDB on first run
   faculty = await dbAll('faculty');
   leaves  = await dbAll('leaves');
 
@@ -1765,7 +1762,7 @@ function openAddFaculty(type) {
   document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 إضافة تدريسي جديد' : '👨‍💼 إضافة موظف جديد';
   ['f-name','f-dept','f-empno','f-hire','f-rank'].forEach(id => document.getElementById(id).value='');
   document.getElementById('f-cumulative').value='0';
-  document.getElementById('f-gender').value='male';
+  document.getElementById('f-gender').value='';
   document.getElementById('f-type').value = type || 'employee';
   const badge = document.getElementById('f-type-badge');
   badge.style.display='block';
@@ -3245,12 +3242,12 @@ async function seedDefaultAccounts() {
 }
 
 async function getAccountFromIDB(username) {
-  return ensureDB().then(() => new Promise((res, rej) => {
+  return new Promise((res, rej) => {
     const tx = db.transaction('accounts', 'readonly');
     const req = tx.objectStore('accounts').get(username);
     req.onsuccess = () => res(req.result || null);
-    req.onerror = () => res(null);
-  }));
+    req.onerror = () => rej();
+  });
 }
 
 async function doLogin() {
@@ -3260,33 +3257,7 @@ async function doLogin() {
   if (!user || !pass) { errEl.style.display = 'block'; return; }
 
   const hash = await sha256(pass);
-
-  // تحقق من الحساب: أولاً IDB، ثم fallback للحسابات الافتراضية
-  let account = null;
-  try {
-    if (!db) { await initDB(); await seedDefaultAccounts(); }
-    account = await getAccountFromIDB(user);
-    // إذا كانت IDB فارغة (أول تشغيل فشل seed) نعيد السيد ثم نجرب مجدداً
-    if (!account) {
-      await seedDefaultAccounts();
-      account = await getAccountFromIDB(user);
-    }
-  } catch(e) {}
-
-  // fallback: تحقق من الحسابات الافتراضية مباشرة
-  if (!account) {
-    const FALLBACK = [
-      { username: 'admin01', password: '2211' },
-      { username: 'admin95', password: '1010' }
-    ];
-    const match = FALLBACK.find(x => x.username === user);
-    if (match) {
-      const fHash = await sha256(match.password);
-      account = { username: match.username, hash: fHash };
-      // احفظها في IDB للمرات القادمة
-      try { if (db) await dbPut('accounts', account); } catch(e) {}
-    }
-  }
+  const account = await getAccountFromIDB(user);
 
   if (account && account.hash === hash) {
     errEl.style.display = 'none';
@@ -3296,9 +3267,9 @@ async function doLogin() {
     document.getElementById('topbar-username').textContent = user;
     document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
-    try { await logActivity('🔑 تسجيل الدخول إلى النظام', 'green'); } catch(e) {}
-    try { await renderActivityList(); } catch(e) {}
-    try { await init(); } catch(e) {}
+    await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
+    await renderActivityList();
+    init();
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
