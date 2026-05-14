@@ -1426,6 +1426,7 @@ function getYearsList() {
 
 // ==================== INIT ====================
 async function init() {
+  if (!db) { await initDB(); await seedDefaultAccounts(); }
   faculty = await dbAll('faculty');
   leaves  = await dbAll('leaves');
 
@@ -3254,6 +3255,14 @@ async function doLogin() {
   const errEl = document.getElementById('login-error');
   if (!user || !pass) { errEl.style.display = 'block'; return; }
 
+  // تأكد أن قاعدة البيانات مفتوحة قبل أي عملية
+  if (!db) {
+    try { await initDB(); await seedDefaultAccounts(); } catch(e) {
+      errEl.textContent = 'خطأ في قاعدة البيانات، أعد تحميل الصفحة';
+      errEl.style.display = 'block'; return;
+    }
+  }
+
   const hash = await sha256(pass);
   const account = await getAccountFromIDB(user);
 
@@ -3267,7 +3276,7 @@ async function doLogin() {
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
     await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
     await renderActivityList();
-    try { await init(); } catch(e) { console.error('init error:', e); }
+    init();
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
