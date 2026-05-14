@@ -570,9 +570,6 @@
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;font-size:15px;margin-top:8px;" onclick="doLogin()">
       🔑 تسجيل الدخول
     </button>
-    <button onclick="resetAndReseed()" style="background:none;border:none;color:#94a3b8;font-size:12px;margin-top:12px;cursor:pointer;font-family:inherit;width:100%;text-align:center;">
-      إعادة تهيئة بيانات الدخول
-    </button>
   </div>
 </div>
 
@@ -1429,8 +1426,6 @@ function getYearsList() {
 
 // ==================== INIT ====================
 async function init() {
-  await initDB();
-  await seedDefaultAccounts();   // seed hashed passwords into IDB on first run
   faculty = await dbAll('faculty');
   leaves  = await dbAll('leaves');
 
@@ -3230,17 +3225,6 @@ const DEFAULT_ACCOUNTS = [
 
 let currentUser = null;
 
-async function resetAndReseed() {
-  if (!confirm('سيتم إعادة تعيين بيانات الدخول. هل أنت متأكد؟')) return;
-  // احذف جميع الحسابات وأعد البذر
-  const all = await dbAll('accounts');
-  for (const a of all) await dbDelete('accounts', a.username);
-  await seedDefaultAccounts();
-  document.getElementById('login-error').textContent = '✅ تم إعادة التهيئة. جرب admin01 / 2211';
-  document.getElementById('login-error').style.display = 'block';
-  document.getElementById('login-error').style.color = '#10b981';
-}
-
 async function seedDefaultAccounts() {
   // Only seeds if accounts store is empty
   const existing = await dbAll('accounts');
@@ -3283,7 +3267,7 @@ async function doLogin() {
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
     await logActivity('🔑 تسجيل الدخول إلى النظام', 'green');
     await renderActivityList();
-    init();
+    try { await init(); } catch(e) { console.error('init error:', e); }
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
