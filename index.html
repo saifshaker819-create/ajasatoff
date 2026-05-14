@@ -3510,7 +3510,29 @@ function toggleActivityPanel() {
 let deferredPrompt = null;
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+
+      // عند وجود تحديث جديد → فعّله فوراً
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            // يوجد تحديث جديد جاهز → أخبر SW القديم بالاستسلام
+            newWorker.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+
+    }).catch(() => {});
+
+    // عند تفعيل SW الجديد → أعد تحميل الصفحة تلقائياً
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
   });
 }
 window.addEventListener('beforeinstallprompt', e => {
