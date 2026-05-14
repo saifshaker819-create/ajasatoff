@@ -570,6 +570,18 @@
     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:13px;font-size:15px;margin-top:8px;" onclick="doLogin()">
       🔑 تسجيل الدخول
     </button>
+    <div id="login-reset-area" style="margin-top:16px;text-align:center;">
+      <button onclick="toggleResetArea()" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit;">
+        مشكلة في تسجيل الدخول؟
+      </button>
+      <div id="reset-box" style="display:none;margin-top:10px;padding:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:12px;font-size:13px;">
+        <div style="color:#64748b;margin-bottom:8px;">إعادة تعيين كلمات المرور إلى الافتراضية:</div>
+        <div style="color:#1e293b;font-weight:700;margin-bottom:10px;">admin01 → 2211 &nbsp;|&nbsp; admin95 → 1010</div>
+        <button onclick="resetPasswords()" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-family:inherit;cursor:pointer;font-weight:700;">
+          🔄 إعادة تعيين
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -3228,16 +3240,19 @@ const DEFAULT_ACCOUNTS = [
 let currentUser = null;
 
 async function seedDefaultAccounts() {
-  // Only seeds if accounts store is empty
-  const existing = await dbAll('accounts');
-  if (existing.length > 0) return;
+  // دائماً تتحقق وتُصلح الهاشات — لا تعتمد على "empty check" فقط
   const pairs = [
     { username: 'admin01', password: '2211' },
     { username: 'admin95', password: '1010' }
   ];
   for (const p of pairs) {
-    const hash = await sha256(p.password);
-    await dbPut('accounts', { username: p.username, hash });
+    const existing = await getAccountFromIDB(p.username).catch(()=>null);
+    if (!existing) {
+      // حساب غير موجود — أضفه
+      const hash = await sha256(p.password);
+      await dbPut('accounts', { username: p.username, hash });
+    }
+    // إذا موجود نتركه كما هو (قد يكون المستخدم غيّر كلمته)
   }
 }
 
@@ -3248,6 +3263,37 @@ async function getAccountFromIDB(username) {
     req.onsuccess = () => res(req.result || null);
     req.onerror = () => rej();
   });
+}
+
+function toggleResetArea() {
+  const box = document.getElementById('reset-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+async function resetPasswords() {
+  const pairs = [
+    { username: 'admin01', password: '2211' },
+    { username: 'admin95', password: '1010' }
+  ];
+  for (const p of pairs) {
+    const hash = await sha256(p.password);
+    await dbPut('accounts', { username: p.username, hash });
+  }
+  document.getElementById('reset-box').style.display = 'none';
+  document.getElementById('login-error').style.display = 'none';
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'block';
+  errEl.style.background = 'rgba(16,185,129,0.1)';
+  errEl.style.color = '#059669';
+  errEl.style.borderColor = 'rgba(16,185,129,0.3)';
+  errEl.textContent = '✅ تمت إعادة التعيين — admin01: 2211 | admin95: 1010';
+  setTimeout(() => {
+    errEl.style.display = 'none';
+    errEl.style.background = '';
+    errEl.style.color = '';
+    errEl.style.borderColor = '';
+    errEl.textContent = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+  }, 4000);
 }
 
 async function doLogin() {
