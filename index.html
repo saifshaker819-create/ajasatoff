@@ -607,6 +607,7 @@
   <div class="activity-list" id="activity-list">
     <div class="activity-empty">لا توجد عمليات مسجلة بعد</div>
   </div>
+  <button class="activity-clear-btn" onclick="clearActivityLog()">🗑️ مسح السجل</button>
 </div>
 
 <!-- ===== CHANGE PASSWORD MODAL ===== -->
@@ -764,12 +765,7 @@
           <div class="page-title" id="profile-name-header"></div>
           <div class="page-subtitle" id="profile-dept-header"></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:12px;font-weight:700;color:#64748b;">📅 فلتر السنة</label>
-            <select id="profile-year-filter" onchange="profileYear=this.value;renderProfile(currentFacultyId)" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(99,102,241,0.2);background:rgba(255,255,255,0.7);font-family:inherit;font-size:14px;font-weight:700;color:#000;outline:none;cursor:pointer;min-width:120px;">
-            </select>
-          </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="openLeaveTypeSelector()">📋 إجازة</button>
           <button class="btn btn-outline" onclick="openManualBalance()" title="تعديل الرصيد يدوياً">✏️ تعديل الرصيد</button>
           <button class="btn btn-outline" onclick="openEditFaculty()">⚙️ تعديل البيانات</button>
@@ -1016,8 +1012,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-primary" onclick="saveFaculty()">💾 حفظ</button>
-      <button type="button" class="btn btn-outline" onclick="closeModal('modal-faculty')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveFaculty()">💾 حفظ</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-faculty')">إلغاء</button>
     </div>
   </div>
 </div>
@@ -1338,7 +1334,6 @@ const IDB_VER = 3;
 let db;
 
 function initDB() {
-  if (db) return Promise.resolve(db); // already open, skip
   return new Promise((res, rej) => {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
@@ -1358,13 +1353,8 @@ function initDB() {
       if (!d.objectStoreNames.contains('settings'))
         d.createObjectStore('settings', {keyPath:'key'});
     };
-    req.onsuccess = e => {
-      db = e.target.result;
-      db.onversionchange = () => { db.close(); db = null; };
-      res(db);
-    };
-    req.onerror = e => rej(new Error('IDB open error: ' + (e.target?.error?.message || 'unknown')));
-    req.onblocked = () => rej(new Error('IDB blocked: close other tabs and retry'));
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror  = e => rej(e);
   });
 }
 
@@ -1378,14 +1368,10 @@ function dbAll(store) {
 }
 function dbPut(store, obj) {
   return new Promise((res, rej) => {
-    try {
-      const tx = db.transaction(store,'readwrite');
-      const req = tx.objectStore(store).put(obj);
-      req.onsuccess = () => res();
-      req.onerror = (e) => rej(new Error('IDB put error: ' + (e.target?.error?.message || store)));
-    } catch(e) {
-      rej(e);
-    }
+    const tx = db.transaction(store,'readwrite');
+    const req = tx.objectStore(store).put(obj);
+    req.onsuccess = () => res();
+    req.onerror = () => rej();
   });
 }
 function dbDelete(store, id) {
@@ -1421,7 +1407,6 @@ let leaves = [];
 let currentFacultyId = null;
 let currentLeaveType = 'normal';
 let alertCallback = null;
-let profileYear = '';
 
 const NORMAL_DAYS = 36;       // موظف عادي
 const NORMAL_DAYS_INSTRUCTOR = 15; // تدريسي
@@ -1549,27 +1534,11 @@ async function sha256(message) {
 // We need IDB ready before showing the login screen so seedDefaultAccounts works.
 // initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
 (async function boot() {
-  let retries = 3;
-  while (retries-- > 0) {
-    try {
-      await initDB();
-      await seedDefaultAccounts();
-      break; // success
-    } catch(e) {
-      console.error('Boot error (attempt left: ' + retries + '):', e);
-      db = null; // reset so next attempt retries
-      if (retries === 0) {
-        // show a soft warning on the login screen
-        try {
-          const warn = document.createElement('div');
-          warn.style.cssText = 'background:#fee2e2;color:#b91c1c;padding:8px 14px;border-radius:8px;font-size:13px;margin-top:8px;text-align:center;';
-          warn.textContent = '⚠️ تعذّر فتح قاعدة البيانات. حاول إغلاق التطبيق وإعادة تشغيله، أو امسح ذاكرة التخزين المؤقت للمتصفح.';
-          document.getElementById('login-error').after(warn);
-        } catch(_) {}
-      } else {
-        await new Promise(r => setTimeout(r, 500)); // wait before retry
-      }
-    }
+  try {
+    await initDB();
+    await seedDefaultAccounts();
+  } catch(e) {
+    console.error('Boot error:', e);
   }
   try { document.getElementById('login-user').focus(); } catch(e){}
 })();
@@ -1749,13 +1718,6 @@ function openProfile(id) {
   if (!fac) return;
   document.getElementById('profile-name-header').textContent = fac.name;
   document.getElementById('profile-dept-header').textContent = (fac.dept||'') + (fac.rank?' • '+fac.rank:'') + (fac.empNo?' • رقم التوظيف: '+fac.empNo:'');
-
-  // تهيئة فلتر السنة
-  const years = getYearsList();
-  const yfSelect = document.getElementById('profile-year-filter');
-  yfSelect.innerHTML = '<option value="">كل السنين</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
-  yfSelect.value = profileYear;
-
   renderProfile(id);
   showPage('profile');
 }
@@ -1764,12 +1726,9 @@ function renderProfile(id) {
   const fac = faculty.find(f=>f.id===id);
   if (!fac) return;
   const cy = currentYear();
-  const selectedYear = profileYear || cy;
-  const bal = getBalance(id, selectedYear);
+  const bal = getBalance(id, cy);
   const cum = getCumBalance(id);
-  const fLeaves = profileYear
-    ? leaves.filter(l=>l.facultyId===id && l.year===profileYear).sort((a,b)=>b.id-a.id)
-    : leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
+  const fLeaves = leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
   const pctN = Math.min(100,Math.round(bal.normalUsed/NORMAL_DAYS*100));
   const pctS = Math.min(100,Math.round(bal.sickUsed/SICK_DAYS*100));
   const isFemale = fac.gender === 'female';
@@ -1777,9 +1736,6 @@ function renderProfile(id) {
   const normalDaysTotal = getNormalDays(id);
   const genderBadge = fac.gender ? `<span class="badge ${isFemale?'badge-red':'badge-blue'}" style="margin-top:4px;">${isFemale?'👩 أنثى':'👨 ذكر'}</span>` : '';
   const typeBadge = isInstructor ? `<span class="badge" style="background:rgba(8,145,178,0.12);color:#0891b2;margin-top:4px;">🎓 تدريسي</span>` : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;margin-top:4px;">👨‍💼 موظف</span>`;
-  const yearBadge = profileYear
-    ? `<span class="badge badge-blue">📅 السنة: ${selectedYear}</span>`
-    : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;">📅 كل السنين | رصيد: ${cy}</span>`;
 
   // Active extended leaves
   const extTypes = ['long','fiveyear','prebirth','postbirth','maternity','maternity-ext'];
@@ -1813,7 +1769,7 @@ function renderProfile(id) {
         <div class="profile-name">${fac.name}</div>
         <div class="profile-dep">${fac.dept||'—'} ${fac.rank?'• '+fac.rank:''} ${fac.hireYear?'• منذ '+fac.hireYear:''}</div>
         <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-          ${yearBadge}
+          <span class="badge badge-blue">📅 السنة: ${cy}</span>
           ${fac.empNo?`<span class="badge badge-gray">🆔 ${fac.empNo}</span>`:''}
           ${genderBadge}
           ${typeBadge}
@@ -1938,44 +1894,35 @@ function openEditFaculty() {
   openModal('modal-faculty');
 }
 async function saveFaculty() {
-  try {
-    const wasEditing = !!editingFacultyId;
-    const name = document.getElementById('f-name').value.trim();
-    const dept = document.getElementById('f-dept').value.trim();
-    const gender = document.getElementById('f-gender').value;
-    const type = document.getElementById('f-type').value || 'employee';
-    if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
-    if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
-    if (!db) {
-      try { await initDB(); } catch(e){}
-      if (!db) { showToast('⚠️ فشل الاتصال بقاعدة البيانات، أعد تحميل الصفحة', 'red'); return; }
-    }
-    const obj = {
-      id: editingFacultyId || Date.now().toString(),
-      name, dept, gender, type,
-      empNo: document.getElementById('f-empno').value.trim(),
-      rank: document.getElementById('f-rank').value.trim(),
-      hireYear: document.getElementById('f-hire').value,
-      initialCumulative: parseInt(document.getElementById('f-cumulative').value)||0,
-    };
-    await dbPut('faculty', obj);
-    faculty = await dbAll('faculty');
-    closeModal('modal-faculty');
-    renderFacultyList();
-    populateFilters();
-    renderDashboard();
-    const typeLabel = type==='instructor'?'التدريسي':'الموظف';
-    showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
-    if (wasEditing && currentFacultyId === editingFacultyId) {
-      document.getElementById('profile-name-header').textContent = obj.name;
-      renderProfile(obj.id);
-    }
-    const genderLabel = gender==='female'?'أنثى':'ذكر';
-    await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
-  } catch(err) {
-    console.error('saveFaculty error:', err);
-    showToast('❌ حدث خطأ أثناء الحفظ: ' + (err?.message || err), 'red');
+  const wasEditing = !!editingFacultyId;
+  const name = document.getElementById('f-name').value.trim();
+  const dept = document.getElementById('f-dept').value.trim();
+  const gender = document.getElementById('f-gender').value;
+  const type = document.getElementById('f-type').value || 'employee';
+  if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
+  if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
+  const obj = {
+    id: editingFacultyId || Date.now().toString(),
+    name, dept, gender, type,
+    empNo: document.getElementById('f-empno').value.trim(),
+    rank: document.getElementById('f-rank').value.trim(),
+    hireYear: document.getElementById('f-hire').value,
+    initialCumulative: parseInt(document.getElementById('f-cumulative').value)||0,
+  };
+  await dbPut('faculty', obj);
+  faculty = await dbAll('faculty');
+  closeModal('modal-faculty');
+  renderFacultyList();
+  populateFilters();
+  renderDashboard();
+  const typeLabel = type==='instructor'?'التدريسي':'الموظف';
+  showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
+  if (wasEditing && currentFacultyId === editingFacultyId) {
+    document.getElementById('profile-name-header').textContent = obj.name;
+    renderProfile(obj.id);
   }
+  const genderLabel = gender==='female'?'أنثى':'ذكر';
+  await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
 }
 function confirmDeleteFaculty() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
@@ -3344,20 +3291,6 @@ async function executeYearClose() {
   renderDashboard();
   populateFilters();
 
-  // مسح سجل العمليات تلقائياً عند إغلاق السنة
-  if (currentUser) {
-    const logEntries = await getActivityForUser(currentUser);
-    for (const entry of logEntries) {
-      await new Promise((res, rej) => {
-        const tx = db.transaction('activity_log', 'readwrite');
-        const req = tx.objectStore('activity_log').delete(entry.id);
-        req.onsuccess = () => res();
-        req.onerror = () => rej();
-      });
-    }
-    await renderActivityList();
-  }
-
   showToast(
     `✅ تم إغلاق سنة ${closingYear} | ترحيل ${totalTransferred} يوم للتراكمي | السنة الجديدة: ${newYear}`,
     'green'
@@ -3415,9 +3348,9 @@ async function doLogin() {
     document.getElementById('topbar-username').textContent = user;
     document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
-    try { await init(); } catch(e){ console.error('init error:', e); }
     try { await logActivity('🔑 تسجيل الدخول إلى النظام','green'); } catch(e){}
     try { await renderActivityList(); } catch(e){}
+    init();
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
