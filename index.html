@@ -1016,8 +1016,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-primary" onclick="saveFaculty()">💾 حفظ</button>
-      <button class="btn btn-outline" onclick="closeModal('modal-faculty')">إلغاء</button>
+      <button type="button" class="btn btn-primary" onclick="saveFaculty()">💾 حفظ</button>
+      <button type="button" class="btn btn-outline" onclick="closeModal('modal-faculty')">إلغاء</button>
     </div>
   </div>
 </div>
@@ -1372,10 +1372,14 @@ function dbAll(store) {
 }
 function dbPut(store, obj) {
   return new Promise((res, rej) => {
-    const tx = db.transaction(store,'readwrite');
-    const req = tx.objectStore(store).put(obj);
-    req.onsuccess = () => res();
-    req.onerror = () => rej();
+    try {
+      const tx = db.transaction(store,'readwrite');
+      const req = tx.objectStore(store).put(obj);
+      req.onsuccess = () => res();
+      req.onerror = (e) => rej(new Error('IDB put error: ' + (e.target?.error?.message || store)));
+    } catch(e) {
+      rej(e);
+    }
   });
 }
 function dbDelete(store, id) {
@@ -1912,35 +1916,41 @@ function openEditFaculty() {
   openModal('modal-faculty');
 }
 async function saveFaculty() {
-  const wasEditing = !!editingFacultyId;
-  const name = document.getElementById('f-name').value.trim();
-  const dept = document.getElementById('f-dept').value.trim();
-  const gender = document.getElementById('f-gender').value;
-  const type = document.getElementById('f-type').value || 'employee';
-  if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
-  if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
-  const obj = {
-    id: editingFacultyId || Date.now().toString(),
-    name, dept, gender, type,
-    empNo: document.getElementById('f-empno').value.trim(),
-    rank: document.getElementById('f-rank').value.trim(),
-    hireYear: document.getElementById('f-hire').value,
-    initialCumulative: parseInt(document.getElementById('f-cumulative').value)||0,
-  };
-  await dbPut('faculty', obj);
-  faculty = await dbAll('faculty');
-  closeModal('modal-faculty');
-  renderFacultyList();
-  populateFilters();
-  renderDashboard();
-  const typeLabel = type==='instructor'?'التدريسي':'الموظف';
-  showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
-  if (wasEditing && currentFacultyId === editingFacultyId) {
-    document.getElementById('profile-name-header').textContent = obj.name;
-    renderProfile(obj.id);
+  try {
+    const wasEditing = !!editingFacultyId;
+    const name = document.getElementById('f-name').value.trim();
+    const dept = document.getElementById('f-dept').value.trim();
+    const gender = document.getElementById('f-gender').value;
+    const type = document.getElementById('f-type').value || 'employee';
+    if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
+    if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
+    if (!db) { showToast('⚠️ قاعدة البيانات غير مهيأة، أعد تحميل الصفحة', 'red'); return; }
+    const obj = {
+      id: editingFacultyId || Date.now().toString(),
+      name, dept, gender, type,
+      empNo: document.getElementById('f-empno').value.trim(),
+      rank: document.getElementById('f-rank').value.trim(),
+      hireYear: document.getElementById('f-hire').value,
+      initialCumulative: parseInt(document.getElementById('f-cumulative').value)||0,
+    };
+    await dbPut('faculty', obj);
+    faculty = await dbAll('faculty');
+    closeModal('modal-faculty');
+    renderFacultyList();
+    populateFilters();
+    renderDashboard();
+    const typeLabel = type==='instructor'?'التدريسي':'الموظف';
+    showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
+    if (wasEditing && currentFacultyId === editingFacultyId) {
+      document.getElementById('profile-name-header').textContent = obj.name;
+      renderProfile(obj.id);
+    }
+    const genderLabel = gender==='female'?'أنثى':'ذكر';
+    await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
+  } catch(err) {
+    console.error('saveFaculty error:', err);
+    showToast('❌ حدث خطأ أثناء الحفظ: ' + (err?.message || err), 'red');
   }
-  const genderLabel = gender==='female'?'أنثى':'ذكر';
-  await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
 }
 function confirmDeleteFaculty() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
@@ -3382,7 +3392,7 @@ async function doLogin() {
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
     try { await logActivity('🔑 تسجيل الدخول إلى النظام','green'); } catch(e){}
     try { await renderActivityList(); } catch(e){}
-    init();
+    await init();
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
