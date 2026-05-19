@@ -124,7 +124,6 @@
     box-shadow: 0 2px 8px rgba(99,102,241,0.08);
   }
   .nav-item .icon { font-size:18px; min-width:24px; text-align:center; }
-  .nav-item span:not(.icon):not(.nav-badge) { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .nav-badge { margin-right:auto; background:var(--accent3); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:20px; }
 
   .sidebar-footer { margin-top:auto; padding-top:16px; border-top:1px solid rgba(99,102,241,0.1); }
@@ -608,7 +607,6 @@
   <div class="activity-list" id="activity-list">
     <div class="activity-empty">لا توجد عمليات مسجلة بعد</div>
   </div>
-  <button class="activity-clear-btn" onclick="clearActivityLog()">🗑️ مسح السجل</button>
 </div>
 
 <!-- ===== CHANGE PASSWORD MODAL ===== -->
@@ -652,30 +650,30 @@
 
     <div class="nav-section">القائمة الرئيسية</div>
     <div class="nav-item active" onclick="showPage('dashboard')">
-      <span class="icon">🏠</span> <span>الرئيسية</span>
+      <span class="icon">🏠</span> الرئيسية
     </div>
     <div class="nav-item" onclick="showPage('faculty')">
-      <span class="icon">👤</span> <span>الموظفون</span>
+      <span class="icon">👤</span> الموظفون
       <span class="nav-badge" id="nav-count">0</span>
     </div>
     <div class="nav-item" onclick="showPage('leaves')">
-      <span class="icon">📅</span> <span>سجل الإجازات</span>
+      <span class="icon">📅</span> سجل الإجازات
     </div>
 
     <div class="nav-section" style="margin-top:12px;">التقارير</div>
     <div class="nav-item" onclick="showPage('statistics')">
-      <span class="icon">📊</span> <span>الإحصائيات والتقارير</span>
+      <span class="icon">📊</span> الإحصائيات والتقارير
     </div>
 
     <div class="nav-section" style="margin-top:12px;">النظام</div>
     <div class="nav-item" onclick="showPage('database')">
-      <span class="icon">🗄️</span> <span>قاعدة البيانات</span>
+      <span class="icon">🗄️</span> قاعدة البيانات
     </div>
     <div class="nav-item" onclick="openGlobalYearClose()" style="background:linear-gradient(135deg,rgba(245,158,11,0.13),rgba(249,115,22,0.08));border:1px solid rgba(245,158,11,0.25);color:#92400e;font-weight:800;">
-      <span class="icon">⚡</span> <span>إغلاق السنة وترحيل الإجازات</span>
+      <span class="icon">⚡</span> إغلاق السنة وترحيل الإجازات
     </div>
     <div class="activity-toggle-btn" onclick="toggleActivityPanel()">
-      <span class="icon">📋</span> <span>سجل العمليات</span>
+      <span class="icon">📋</span> سجل العمليات
       <span class="nav-badge" id="activity-count-badge" style="display:none;">0</span>
     </div>
 
@@ -766,7 +764,12 @@
           <div class="page-title" id="profile-name-header"></div>
           <div class="page-subtitle" id="profile-dept-header"></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:12px;font-weight:700;color:#64748b;">📅 فلتر السنة</label>
+            <select id="profile-year-filter" onchange="profileYear=this.value;renderProfile(currentFacultyId)" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(99,102,241,0.2);background:rgba(255,255,255,0.7);font-family:inherit;font-size:14px;font-weight:700;color:#000;outline:none;cursor:pointer;min-width:120px;">
+            </select>
+          </div>
           <button class="btn btn-primary" onclick="openLeaveTypeSelector()">📋 إجازة</button>
           <button class="btn btn-outline" onclick="openManualBalance()" title="تعديل الرصيد يدوياً">✏️ تعديل الرصيد</button>
           <button class="btn btn-outline" onclick="openEditFaculty()">⚙️ تعديل البيانات</button>
@@ -810,7 +813,6 @@
               <option value="postbirth">بعد الوضع</option>
               <option value="maternity">إجازة أمومة</option>
               <option value="maternity-ext">تمديد أمومة</option>
-              <option value="hourly">زمنية (بالساعات)</option>
             </select>
           </div>
           <div class="filter-item">
@@ -1193,49 +1195,12 @@
   </div>
 </div>
 
-<!-- Hourly Leave Modal -->
-<div class="modal-overlay" id="modal-hourly-leave">
-  <div class="modal modal-lg">
-    <div class="modal-header">
-      <div class="modal-title">&#x23F1;&#xFE0F; إجازة زمنية (بالساعات)</div>
-      <button class="modal-close" onclick="closeModal('modal-hourly-leave')">&#x2715;</button>
-    </div>
-    <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">تاريخ الإجازة *</label>
-        <input class="form-input" id="hl-date" type="date" oninput="calcHourlyDeduct()">
-      </div>
-      <div class="form-group">
-        <label class="form-label">وقت البداية *</label>
-        <input class="form-input" id="hl-start-time" type="time" oninput="calcHourlyDeduct()">
-      </div>
-      <div class="form-group">
-        <label class="form-label">عدد الساعات *</label>
-        <input class="form-input" id="hl-hours" type="number" min="0.5" max="14" step="0.5" placeholder="مثال: 2 أو 3.5" oninput="calcHourlyDeduct()">
-      </div>
-      <div class="form-group">
-        <label class="form-label">السنة الدراسية</label>
-        <select class="form-select" id="hl-year" onchange="calcHourlyDeduct()"></select>
-      </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">ملاحظات</label>
-      <input class="form-input" id="hl-notes" placeholder="ملاحظات إضافية (اختياري)">
-    </div>
-    <div id="hourly-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);font-size:13px;color:#000;margin-bottom:4px;display:none;"></div>
-    <div class="modal-footer">
-      <button class="btn" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="saveHourlyLeave()">&#x1F4BE; تسجيل الإجازة الزمنية</button>
-      <button class="btn btn-outline" onclick="closeModal('modal-hourly-leave')">إلغاء</button>
-    </div>
-  </div>
-</div>
-
 <!-- Manual Balance Edit Modal -->
 <div class="modal-overlay" id="modal-manual-balance">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <div class="modal-title">&#x270F;&#xFE0F; تعديل رصيد الإجازة يدوياً</div>
-      <button class="modal-close" onclick="closeModal('modal-manual-balance')">&#x2715;</button>
+      <div class="modal-title">✏️ تعديل رصيد الإجازة يدوياً</div>
+      <button class="modal-close" onclick="closeModal('modal-manual-balance')">✕</button>
     </div>
     <div class="form-group">
       <label class="form-label">نوع الإجازة</label>
@@ -1446,6 +1411,7 @@ let leaves = [];
 let currentFacultyId = null;
 let currentLeaveType = 'normal';
 let alertCallback = null;
+let profileYear = '';
 
 const NORMAL_DAYS = 36;       // موظف عادي
 const NORMAL_DAYS_INSTRUCTOR = 15; // تدريسي
@@ -1625,7 +1591,7 @@ function renderDashboard() {
       <td>${leaveTypeBadge(l.type)}</td>
       <td>${l.fromDate}</td>
       <td>${l.toDate}</td>
-      <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
+      <td><strong>${l.days}</strong></td>
       <td>${l.year}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة بعد</p></div></td></tr>`;
@@ -1650,7 +1616,6 @@ function leaveTypeBadge(t) {
     'maternity-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة أمومة</span>',
     'manual-sick-add':'<span class="badge badge-gray" style="background:rgba(16,185,129,0.1);color:#059669;">➕ إضافة مرضية (يدوي)</span>',
     'manual-sick-sub':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.1);color:#dc2626;">➖ خصم مرضية (يدوي)</span>',
-    'hourly':         '<span class="badge badge-orange">⏱️ إجازة زمنية</span>',
   };
   return map[t] || `<span class="badge badge-gray">${t}</span>`;
 }
@@ -1662,30 +1627,24 @@ function getBalance(facultyId, year) {
   const nd = getNormalDays(facultyId);
   const fl = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
 
-  // اعتيادية
+  // Aعتيادية
   const normalUsed    = fl.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
   const normalRefund  = fl.filter(l=>l.type==='normal-refund').reduce((s,l)=>s+l.days,0);
   const exceptionAdd  = fl.filter(l=>l.type==='exception').reduce((s,l)=>s+l.days,0);
-  // خصم الإجازات الزمنية المتراكمة (كل 7 ساعات = يوم)
-  const hourlyUsedHours = fl.filter(l=>l.type==='hourly').reduce((s,l)=>s+(l.hours||0),0);
-  const hourlyDeductDays = Math.floor(hourlyUsedHours / 7);
   // مرضية
   const sickUsed      = fl.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
   const sickManualAdd = fl.filter(l=>l.type==='manual-sick-add').reduce((s,l)=>s+l.days,0);
   const sickManualSub = fl.filter(l=>l.type==='manual-sick-sub').reduce((s,l)=>s+l.days,0);
 
-  const normalBalance = nd + exceptionAdd - normalUsed + normalRefund - hourlyDeductDays;
+  const normalBalance = nd + exceptionAdd - normalUsed + normalRefund;
   const sickBalance   = SICK_DAYS + sickManualAdd - sickManualSub - sickUsed;
 
   return {
     normal:     normalBalance,
     sick:       sickBalance,
-    normalUsed: Math.max(0, normalUsed - normalRefund + hourlyDeductDays),
+    normalUsed: Math.max(0, normalUsed - normalRefund),
     sickUsed,
     normalDays: nd + exceptionAdd,
-    hourlyUsedHours,
-    hourlyDeductDays,
-    hourlyRemainder: hourlyUsedHours % 7,
   };
 }
 
@@ -1764,6 +1723,13 @@ function openProfile(id) {
   if (!fac) return;
   document.getElementById('profile-name-header').textContent = fac.name;
   document.getElementById('profile-dept-header').textContent = (fac.dept||'') + (fac.rank?' • '+fac.rank:'') + (fac.empNo?' • رقم التوظيف: '+fac.empNo:'');
+
+  // تهيئة فلتر السنة
+  const years = getYearsList();
+  const yfSelect = document.getElementById('profile-year-filter');
+  yfSelect.innerHTML = '<option value="">كل السنين</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  yfSelect.value = profileYear;
+
   renderProfile(id);
   showPage('profile');
 }
@@ -1772,9 +1738,12 @@ function renderProfile(id) {
   const fac = faculty.find(f=>f.id===id);
   if (!fac) return;
   const cy = currentYear();
-  const bal = getBalance(id, cy);
+  const selectedYear = profileYear || cy;
+  const bal = getBalance(id, selectedYear);
   const cum = getCumBalance(id);
-  const fLeaves = leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
+  const fLeaves = profileYear
+    ? leaves.filter(l=>l.facultyId===id && l.year===profileYear).sort((a,b)=>b.id-a.id)
+    : leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
   const pctN = Math.min(100,Math.round(bal.normalUsed/NORMAL_DAYS*100));
   const pctS = Math.min(100,Math.round(bal.sickUsed/SICK_DAYS*100));
   const isFemale = fac.gender === 'female';
@@ -1782,6 +1751,9 @@ function renderProfile(id) {
   const normalDaysTotal = getNormalDays(id);
   const genderBadge = fac.gender ? `<span class="badge ${isFemale?'badge-red':'badge-blue'}" style="margin-top:4px;">${isFemale?'👩 أنثى':'👨 ذكر'}</span>` : '';
   const typeBadge = isInstructor ? `<span class="badge" style="background:rgba(8,145,178,0.12);color:#0891b2;margin-top:4px;">🎓 تدريسي</span>` : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;margin-top:4px;">👨‍💼 موظف</span>`;
+  const yearBadge = profileYear
+    ? `<span class="badge badge-blue">📅 السنة: ${selectedYear}</span>`
+    : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;">📅 كل السنين | رصيد: ${cy}</span>`;
 
   // Active extended leaves
   const extTypes = ['long','fiveyear','prebirth','postbirth','maternity','maternity-ext'];
@@ -1815,7 +1787,7 @@ function renderProfile(id) {
         <div class="profile-name">${fac.name}</div>
         <div class="profile-dep">${fac.dept||'—'} ${fac.rank?'• '+fac.rank:''} ${fac.hireYear?'• منذ '+fac.hireYear:''}</div>
         <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-          <span class="badge badge-blue">📅 السنة: ${cy}</span>
+          ${yearBadge}
           ${fac.empNo?`<span class="badge badge-gray">🆔 ${fac.empNo}</span>`:''}
           ${genderBadge}
           ${typeBadge}
@@ -1833,7 +1805,7 @@ function renderProfile(id) {
       <div class="leave-block">
         <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
         <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
-        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم${bal.hourlyUsedHours > 0 ? ` | ⏱️ ساعات زمنية: ${bal.hourlyUsedHours} ساعة (${bal.hourlyDeductDays} يوم + ${bal.hourlyRemainder} ساعة)` : ''}</div>
+        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
       </div>
       <div class="leave-block">
@@ -1864,9 +1836,9 @@ function renderProfile(id) {
                 <td>${leaveTypeBadge(l.type)}${l.cutDate?` <span style="font-size:11px;color:#64748b;">(مقطوعة ${l.cutDate})</span>`:''}</td>
                 <td>${l.fromDate}</td>
                 <td>${l.toDate}</td>
-                <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
+                <td><strong>${l.days}</strong></td>
                 <td>${l.year}</td>
-                <td>${l.type==='hourly' && l.startTime ? `🕐 ${l.startTime} — ` : ''}${l.notes||'—'}</td>
+                <td>${l.notes||'—'}</td>
                 <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
               </tr>`).join('') :
               `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة لهذا الموظف</p></div></td></tr>`
@@ -2171,9 +2143,9 @@ function renderLeavesLog() {
       <td>${leaveTypeBadge(l.type)}</td>
       <td>${l.fromDate}</td>
       <td>${l.toDate}</td>
-      <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
+      <td><strong>${l.days}</strong></td>
       <td>${l.year}</td>
-      <td>${l.type==='hourly' && l.startTime ? `🕐 ${l.startTime} | ` : ''}${l.notes||'—'}</td>
+      <td>${l.notes||'—'}</td>
       <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
     </tr>`;
   }).join('');
@@ -2726,7 +2698,6 @@ function openLeaveTypeSelector() {
   let btns = `
     <button class="btn btn-green"  style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('normal')">📅 إجازة اعتيادية</button>
     <button class="btn btn-red"    style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('sick')">🏥 إجازة مرضية</button>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="closeModal('modal-leave-type');openHourlyLeave()">⏱️ إجازة زمنية (بالساعات)</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="closeModal('modal-leave-type');openStudyLeave()">📚 إجازة دراسية</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('long')">🏖️ إجازة طويلة</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 4px 14px rgba(5,150,105,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('fiveyear')">🗓️ إجازة 5 سنوات</button>`;
@@ -2853,104 +2824,6 @@ async function saveStudyLeave() {
   showToast('✅ تم تسجيل الإجازة الدراسية بنجاح', 'green');
   const fac = faculty.find(f=>f.id===currentFacultyId);
   await logActivity(`📚 إجازة دراسية (${days} يوم) — ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`, 'blue');
-}
-
-// ==================== HOURLY LEAVE ====================
-const HOURS_PER_DAY = 7; // كل 7 ساعات = يوم اعتيادي
-
-function openHourlyLeave() {
-  const years = getYearsList();
-  const cy = currentYear();
-  document.getElementById('hl-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('hl-start-time').value = '';
-  document.getElementById('hl-hours').value = '';
-  document.getElementById('hl-notes').value = '';
-  document.getElementById('hourly-info-box').style.display = 'none';
-  document.getElementById('hl-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-  openModal('modal-hourly-leave');
-}
-
-function calcHourlyDeduct() {
-  if (!currentFacultyId) return;
-  const hours = parseFloat(document.getElementById('hl-hours').value) || 0;
-  const year = document.getElementById('hl-year').value;
-  const box = document.getElementById('hourly-info-box');
-  if (!hours || hours <= 0) { box.style.display = 'none'; return; }
-
-  const bal = getBalance(currentFacultyId, year);
-  const existingHours = bal.hourlyUsedHours;
-  const newTotalHours = existingHours + hours;
-  const newDeductDays = Math.floor(newTotalHours / HOURS_PER_DAY);
-  const oldDeductDays = Math.floor(existingHours / HOURS_PER_DAY);
-  const addedDays = newDeductDays - oldDeductDays;
-  const remainderHours = newTotalHours % HOURS_PER_DAY;
-
-  box.style.display = 'block';
-  let html = `<span style="color:#d97706;font-weight:700;">⏱️ عدد الساعات المطلوبة: <strong>${hours}</strong> ساعة</span><br>`;
-  html += `<span style="color:#64748b;">📊 إجمالي الساعات الزمنية المتراكمة: <strong>${newTotalHours}</strong> ساعة (كل 7 ساعات = يوم اعتيادي)</span><br>`;
-  if (addedDays > 0) {
-    html += `<span style="color:var(--red);font-weight:700;">📅 سيتم استقطاع <strong>${addedDays}</strong> يوم من الإجازة الاعتيادية (اكتمل ${newDeductDays} يوم)</span><br>`;
-  }
-  html += `<span style="color:#059669;">الرصيد الاعتيادي المتبقي بعد الاستقطاع: <strong>${bal.normal - addedDays}</strong> يوم | الساعات المتبقية لاكتمال يوم: <strong>${remainderHours > 0 ? HOURS_PER_DAY - remainderHours : HOURS_PER_DAY}</strong> ساعة</span>`;
-  box.innerHTML = html;
-}
-
-async function saveHourlyLeave() {
-  const date = document.getElementById('hl-date').value;
-  const startTime = document.getElementById('hl-start-time').value;
-  const hours = parseFloat(document.getElementById('hl-hours').value);
-  const year = document.getElementById('hl-year').value;
-  const notes = document.getElementById('hl-notes').value.trim();
-
-  if (!date) { showToast('⚠️ الرجاء تحديد تاريخ الإجازة', 'red'); return; }
-  if (!startTime) { showToast('⚠️ الرجاء تحديد وقت بداية الإجازة', 'red'); return; }
-  if (!hours || hours <= 0) { showToast('⚠️ الرجاء إدخال عدد ساعات صحيح', 'red'); return; }
-
-  const bal = getBalance(currentFacultyId, year);
-  const existingHours = bal.hourlyUsedHours;
-  const newTotalHours = existingHours + hours;
-  const newDeductDays = Math.floor(newTotalHours / HOURS_PER_DAY);
-  const oldDeductDays = Math.floor(existingHours / HOURS_PER_DAY);
-  const addedDays = newDeductDays - oldDeductDays;
-
-  if (addedDays > 0 && bal.normal < addedDays) {
-    showToast(`❌ الرصيد الاعتيادي غير كافٍ — متبقي ${bal.normal} يوم ويلزم ${addedDays} يوم`, 'red');
-    return;
-  }
-
-  await addLeaveRecord({
-    facultyId: currentFacultyId,
-    type: 'hourly',
-    days: 0,
-    hours: hours,
-    fromDate: date,
-    toDate: date,
-    startTime: startTime,
-    year,
-    notes: notes || `إجازة زمنية ${hours} ساعة — بداية ${startTime}`,
-  });
-
-  if (addedDays > 0) {
-    await addLeaveRecord({
-      facultyId: currentFacultyId,
-      type: 'normal',
-      days: addedDays,
-      fromDate: date,
-      toDate: date,
-      year,
-      notes: `استقطاع تلقائي — اكتمل ${newDeductDays * HOURS_PER_DAY} ساعة زمنية (كل 7 ساعات = يوم اعتيادي)`,
-      autoDeduct: true,
-    });
-  }
-
-  closeModal('modal-hourly-leave');
-  await renderProfile(currentFacultyId);
-  renderFacultyList();
-  renderDashboard();
-  const deductMsg = addedDays > 0 ? ` — تم استقطاع ${addedDays} يوم اعتيادي` : '';
-  showToast(`✅ تم تسجيل الإجازة الزمنية (${hours} ساعة)${deductMsg}`, addedDays > 0 ? 'orange' : 'green');
-  const fac = faculty.find(f => f.id === currentFacultyId);
-  await logActivity(`⏱️ إجازة زمنية ${hours} ساعة — ${fac?.name||''}${deductMsg}`, 'orange');
 }
 
 // ==================== MANUAL BALANCE EDIT ====================
@@ -3435,6 +3308,20 @@ async function executeYearClose() {
   renderFacultyList();
   renderDashboard();
   populateFilters();
+
+  // مسح سجل العمليات تلقائياً عند إغلاق السنة
+  if (currentUser) {
+    const logEntries = await getActivityForUser(currentUser);
+    for (const entry of logEntries) {
+      await new Promise((res, rej) => {
+        const tx = db.transaction('activity_log', 'readwrite');
+        const req = tx.objectStore('activity_log').delete(entry.id);
+        req.onsuccess = () => res();
+        req.onerror = () => rej();
+      });
+    }
+    await renderActivityList();
+  }
 
   showToast(
     `✅ تم إغلاق سنة ${closingYear} | ترحيل ${totalTransferred} يوم للتراكمي | السنة الجديدة: ${newYear}`,
