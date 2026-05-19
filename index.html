@@ -1338,6 +1338,7 @@ const IDB_VER = 3;
 let db;
 
 function initDB() {
+  if (db) return Promise.resolve(db); // already open, skip
   return new Promise((res, rej) => {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
@@ -1357,8 +1358,13 @@ function initDB() {
       if (!d.objectStoreNames.contains('settings'))
         d.createObjectStore('settings', {keyPath:'key'});
     };
-    req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror  = e => rej(e);
+    req.onsuccess = e => {
+      db = e.target.result;
+      db.onversionchange = () => { db.close(); db = null; };
+      res(db);
+    };
+    req.onerror = e => rej(new Error('IDB open error: ' + (e.target?.error?.message || 'unknown')));
+    req.onblocked = () => rej(new Error('IDB blocked: close other tabs and retry'));
   });
 }
 
@@ -1543,11 +1549,27 @@ async function sha256(message) {
 // We need IDB ready before showing the login screen so seedDefaultAccounts works.
 // initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
 (async function boot() {
-  try {
-    await initDB();
-    await seedDefaultAccounts();
-  } catch(e) {
-    console.error('Boot error:', e);
+  let retries = 3;
+  while (retries-- > 0) {
+    try {
+      await initDB();
+      await seedDefaultAccounts();
+      break; // success
+    } catch(e) {
+      console.error('Boot error (attempt left: ' + retries + '):', e);
+      db = null; // reset so next attempt retries
+      if (retries === 0) {
+        // show a soft warning on the login screen
+        try {
+          const warn = document.createElement('div');
+          warn.style.cssText = 'background:#fee2e2;color:#b91c1c;padding:8px 14px;border-radius:8px;font-size:13px;margin-top:8px;text-align:center;';
+          warn.textContent = '⚠️ تعذّر فتح قاعدة البيانات. حاول إغلاق التطبيق وإعادة تشغيله، أو امسح ذاكرة التخزين المؤقت للمتصفح.';
+          document.getElementById('login-error').after(warn);
+        } catch(_) {}
+      } else {
+        await new Promise(r => setTimeout(r, 500)); // wait before retry
+      }
+    }
   }
   try { document.getElementById('login-user').focus(); } catch(e){}
 })();
@@ -3587,9 +3609,6 @@ function toggleActivityPanel() {
 <script>
 let deferredPrompt = null;
 if ('serviceWorker' in navigator) {
-  // تهيئة قاعدة البيانات فور تحميل الصفحة بغض النظر عن تسجيل الدخول
-  initDB().catch(e => console.error('initDB failed on load:', e));
-
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
 
