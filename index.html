@@ -1924,7 +1924,10 @@ async function saveFaculty() {
     const type = document.getElementById('f-type').value || 'employee';
     if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
     if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
-    if (!db) { showToast('⚠️ قاعدة البيانات غير مهيأة، أعد تحميل الصفحة', 'red'); return; }
+    if (!db) {
+      try { await initDB(); } catch(e){}
+      if (!db) { showToast('⚠️ فشل الاتصال بقاعدة البيانات، أعد تحميل الصفحة', 'red'); return; }
+    }
     const obj = {
       id: editingFacultyId || Date.now().toString(),
       name, dept, gender, type,
@@ -3390,9 +3393,9 @@ async function doLogin() {
     document.getElementById('topbar-username').textContent = user;
     document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
+    try { await init(); } catch(e){ console.error('init error:', e); }
     try { await logActivity('🔑 تسجيل الدخول إلى النظام','green'); } catch(e){}
     try { await renderActivityList(); } catch(e){}
-    await init();
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
@@ -3584,6 +3587,9 @@ function toggleActivityPanel() {
 <script>
 let deferredPrompt = null;
 if ('serviceWorker' in navigator) {
+  // تهيئة قاعدة البيانات فور تحميل الصفحة بغض النظر عن تسجيل الدخول
+  initDB().catch(e => console.error('initDB failed on load:', e));
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
 
