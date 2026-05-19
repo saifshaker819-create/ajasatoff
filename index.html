@@ -17,6 +17,118 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
   <link rel="shortcut icon" href="favicon.ico">
 
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAUW1D0O6wuI0XFJ-DgIxq75DV-bt5Q3yw",
+    authDomain: "holidays-23658.firebaseapp.com",
+    projectId: "holidays-23658",
+    storageBucket: "holidays-23658.firebasestorage.app",
+    messagingSenderId: "709380474412",
+    appId: "1:709380474412:web:1277c851d70eec1a7fb389",
+    measurementId: "G-RQ7T5S1EQ6"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const fsdb = firebase.firestore();
+
+  // ==================== FIREBASE SYNC ====================
+  // المزامنة تعمل في الخلفية — IDB هو المصدر الأساسي للسرعة
+
+  let fbSyncEnabled = false; // يُفعَّل بعد تسجيل الدخول
+
+  async function fbPut(collection, obj) {
+    if (!fbSyncEnabled) return;
+    try {
+      await fsdb.collection(collection).doc(String(obj.id)).set(obj);
+    } catch(e) { console.warn('Firebase write failed:', e.message); }
+  }
+
+  async function fbDelete(collection, id) {
+    if (!fbSyncEnabled) return;
+    try {
+      await fsdb.collection(collection).doc(String(id)).delete();
+    } catch(e) { console.warn('Firebase delete failed:', e.message); }
+  }
+
+  // مزامنة كاملة: Firebase → IDB (عند أول دخول أو طلب تحديث)
+  async function syncFromFirebase() {
+    try {
+      showSyncStatus('جاري المزامنة مع السحابة...', 'blue');
+
+      const [facSnap, leavSnap] = await Promise.all([
+        fsdb.collection('faculty').get(),
+        fsdb.collection('leaves').get()
+      ]);
+
+      const fbFaculty = facSnap.docs.map(d => d.data());
+      const fbLeaves  = leavSnap.docs.map(d => d.data());
+
+      if (fbFaculty.length === 0 && fbLeaves.length === 0) {
+        // Firebase فارغ → ارفع البيانات المحلية إليه
+        await pushLocalToFirebase();
+        showSyncStatus('✅ تم رفع البيانات المحلية إلى السحابة', 'green');
+        return;
+      }
+
+      // Firebase فيه بيانات → استبدل المحلي بها
+      const allLocalFac = await dbAll('faculty');
+      const allLocalLeav = await dbAll('leaves');
+      for (const f of allLocalFac)  await dbDelete('faculty', f.id);
+      for (const l of allLocalLeav) await dbDelete('leaves', l.id);
+      for (const f of fbFaculty)    await dbPut('faculty', f);
+      for (const l of fbLeaves)     await dbPut('leaves', l);
+
+      faculty = await dbAll('faculty');
+      leaves  = await dbAll('leaves');
+
+      renderDashboard();
+      renderFacultyList();
+      populateFilters();
+
+      showSyncStatus(`✅ تمت المزامنة — ${fbFaculty.length} موظف، ${fbLeaves.length} سجل`, 'green');
+    } catch(e) {
+      showSyncStatus('⚠️ تعذرت المزامنة — يعمل محلياً', 'orange');
+      console.warn('Sync error:', e.message);
+    }
+  }
+
+  async function pushLocalToFirebase() {
+    try {
+      const allFac  = await dbAll('faculty');
+      const allLeav = await dbAll('leaves');
+      const batch_size = 400;
+      // faculty
+      for (let i = 0; i < allFac.length; i += batch_size) {
+        const batch = fsdb.batch();
+        allFac.slice(i, i + batch_size).forEach(f => {
+          batch.set(fsdb.collection('faculty').doc(String(f.id)), f);
+        });
+        await batch.commit();
+      }
+      // leaves
+      for (let i = 0; i < allLeav.length; i += batch_size) {
+        const batch = fsdb.batch();
+        allLeav.slice(i, i + batch_size).forEach(l => {
+          batch.set(fsdb.collection('leaves').doc(String(l.id)), l);
+        });
+        await batch.commit();
+      }
+    } catch(e) { console.warn('Push error:', e.message); }
+  }
+
+  function showSyncStatus(msg, type) {
+    let el = document.getElementById('sync-status-bar');
+    if (!el) return;
+    const colors = { green:'#10b981', orange:'#f59e0b', blue:'#6366f1', red:'#ef4444' };
+    el.style.display = 'flex';
+    el.style.borderColor = colors[type] || colors.blue;
+    el.querySelector('#sync-msg').textContent = msg;
+    if (type === 'green') setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+</script>
+
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -124,6 +236,7 @@
     box-shadow: 0 2px 8px rgba(99,102,241,0.08);
   }
   .nav-item .icon { font-size:18px; min-width:24px; text-align:center; }
+  .nav-item span:not(.icon):not(.nav-badge) { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .nav-badge { margin-right:auto; background:var(--accent3); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:20px; }
 
   .sidebar-footer { margin-top:auto; padding-top:16px; border-top:1px solid rgba(99,102,241,0.1); }
@@ -435,6 +548,32 @@
   .half-salary-row { background:rgba(245,158,11,0.07) !important; }
   .half-salary-row td { color:#000 !important; font-weight:600; }
 
+  /* ===== SYNC STATUS BAR ===== */
+  #sync-status-bar {
+    display: none;
+    position: fixed;
+    top: 52px; right: var(--sidebar-w); left: 0;
+    z-index: 79;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 2px solid #6366f1;
+    padding: 7px 20px;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #000;
+  }
+  #sync-status-bar .sync-spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(99,102,241,0.3);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   /* ===== LOGIN SCREEN ===== */
   #login-screen {
     position: fixed; inset: 0; z-index: 9000;
@@ -591,8 +730,16 @@
     <div class="topbar-avatar" id="topbar-avatar-letter">A</div>
     <span id="topbar-username">—</span>
   </div>
+  <button class="btn btn-outline btn-sm" onclick="syncFromFirebase()" title="مزامنة مع السحابة" style="gap:6px;">☁️ مزامنة</button>
   <button class="btn btn-outline btn-sm" onclick="openChangePassword()" title="تغيير كلمة المرور" style="gap:6px;">🔒 تغيير الرمز السري</button>
   <button class="btn btn-outline btn-sm" onclick="doLogout()" style="color:var(--red);border-color:rgba(239,68,68,0.25);">🚪 خروج</button>
+</div>
+
+<!-- ===== SYNC STATUS BAR ===== -->
+<div id="sync-status-bar">
+  <div class="sync-spinner"></div>
+  <span id="sync-msg">جاري المزامنة...</span>
+  <button onclick="document.getElementById('sync-status-bar').style.display='none'" style="margin-right:auto;background:none;border:none;cursor:pointer;font-size:14px;color:#64748b;">✕</button>
 </div>
 
 <!-- ===== ACTIVITY LOG PANEL ===== -->
@@ -651,30 +798,30 @@
 
     <div class="nav-section">القائمة الرئيسية</div>
     <div class="nav-item active" onclick="showPage('dashboard')">
-      <span class="icon">🏠</span> الرئيسية
+      <span class="icon">🏠</span> <span>الرئيسية</span>
     </div>
     <div class="nav-item" onclick="showPage('faculty')">
-      <span class="icon">👤</span> الموظفون
+      <span class="icon">👤</span> <span>الموظفون</span>
       <span class="nav-badge" id="nav-count">0</span>
     </div>
     <div class="nav-item" onclick="showPage('leaves')">
-      <span class="icon">📅</span> سجل الإجازات
+      <span class="icon">📅</span> <span>سجل الإجازات</span>
     </div>
 
     <div class="nav-section" style="margin-top:12px;">التقارير</div>
     <div class="nav-item" onclick="showPage('statistics')">
-      <span class="icon">📊</span> الإحصائيات والتقارير
+      <span class="icon">📊</span> <span>الإحصائيات والتقارير</span>
     </div>
 
     <div class="nav-section" style="margin-top:12px;">النظام</div>
     <div class="nav-item" onclick="showPage('database')">
-      <span class="icon">🗄️</span> قاعدة البيانات
+      <span class="icon">🗄️</span> <span>قاعدة البيانات</span>
     </div>
     <div class="nav-item" onclick="openGlobalYearClose()" style="background:linear-gradient(135deg,rgba(245,158,11,0.13),rgba(249,115,22,0.08));border:1px solid rgba(245,158,11,0.25);color:#92400e;font-weight:800;">
-      <span class="icon">⚡</span> إغلاق السنة وترحيل الإجازات
+      <span class="icon">⚡</span> <span>إغلاق السنة وترحيل الإجازات</span>
     </div>
     <div class="activity-toggle-btn" onclick="toggleActivityPanel()">
-      <span class="icon">📋</span> سجل العمليات
+      <span class="icon">📋</span> <span>سجل العمليات</span>
       <span class="nav-badge" id="activity-count-badge" style="display:none;">0</span>
     </div>
 
@@ -809,6 +956,7 @@
               <option value="postbirth">بعد الوضع</option>
               <option value="maternity">إجازة أمومة</option>
               <option value="maternity-ext">تمديد أمومة</option>
+              <option value="hourly">زمنية (بالساعات)</option>
             </select>
           </div>
           <div class="filter-item">
@@ -1191,12 +1339,49 @@
   </div>
 </div>
 
+<!-- Hourly Leave Modal -->
+<div class="modal-overlay" id="modal-hourly-leave">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">&#x23F1;&#xFE0F; إجازة زمنية (بالساعات)</div>
+      <button class="modal-close" onclick="closeModal('modal-hourly-leave')">&#x2715;</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">تاريخ الإجازة *</label>
+        <input class="form-input" id="hl-date" type="date" oninput="calcHourlyDeduct()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">وقت البداية *</label>
+        <input class="form-input" id="hl-start-time" type="time" oninput="calcHourlyDeduct()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">عدد الساعات *</label>
+        <input class="form-input" id="hl-hours" type="number" min="0.5" max="14" step="0.5" placeholder="مثال: 2 أو 3.5" oninput="calcHourlyDeduct()">
+      </div>
+      <div class="form-group">
+        <label class="form-label">السنة الدراسية</label>
+        <select class="form-select" id="hl-year" onchange="calcHourlyDeduct()"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ملاحظات</label>
+      <input class="form-input" id="hl-notes" placeholder="ملاحظات إضافية (اختياري)">
+    </div>
+    <div id="hourly-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);font-size:13px;color:#000;margin-bottom:4px;display:none;"></div>
+    <div class="modal-footer">
+      <button class="btn" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="saveHourlyLeave()">&#x1F4BE; تسجيل الإجازة الزمنية</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-hourly-leave')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
 <!-- Manual Balance Edit Modal -->
 <div class="modal-overlay" id="modal-manual-balance">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <div class="modal-title">✏️ تعديل رصيد الإجازة يدوياً</div>
-      <button class="modal-close" onclick="closeModal('modal-manual-balance')">✕</button>
+      <div class="modal-title">&#x270F;&#xFE0F; تعديل رصيد الإجازة يدوياً</div>
+      <button class="modal-close" onclick="closeModal('modal-manual-balance')">&#x2715;</button>
     </div>
     <div class="form-group">
       <label class="form-label">نوع الإجازة</label>
@@ -1370,7 +1555,11 @@ function dbPut(store, obj) {
   return new Promise((res, rej) => {
     const tx = db.transaction(store,'readwrite');
     const req = tx.objectStore(store).put(obj);
-    req.onsuccess = () => res();
+    req.onsuccess = () => {
+      // مزامنة Firebase في الخلفية (فقط faculty و leaves)
+      if (store === 'faculty' || store === 'leaves') fbPut(store, obj);
+      res();
+    };
     req.onerror = () => rej();
   });
 }
@@ -1378,7 +1567,10 @@ function dbDelete(store, id) {
   return new Promise((res, rej) => {
     const tx = db.transaction(store,'readwrite');
     const req = tx.objectStore(store).delete(id);
-    req.onsuccess = () => res();
+    req.onsuccess = () => {
+      if (store === 'faculty' || store === 'leaves') fbDelete(store, id);
+      res();
+    };
     req.onerror = () => rej();
   });
 }
@@ -1586,7 +1778,7 @@ function renderDashboard() {
       <td>${leaveTypeBadge(l.type)}</td>
       <td>${l.fromDate}</td>
       <td>${l.toDate}</td>
-      <td><strong>${l.days}</strong></td>
+      <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
       <td>${l.year}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة بعد</p></div></td></tr>`;
@@ -1611,6 +1803,7 @@ function leaveTypeBadge(t) {
     'maternity-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة أمومة</span>',
     'manual-sick-add':'<span class="badge badge-gray" style="background:rgba(16,185,129,0.1);color:#059669;">➕ إضافة مرضية (يدوي)</span>',
     'manual-sick-sub':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.1);color:#dc2626;">➖ خصم مرضية (يدوي)</span>',
+    'hourly':         '<span class="badge badge-orange">⏱️ إجازة زمنية</span>',
   };
   return map[t] || `<span class="badge badge-gray">${t}</span>`;
 }
@@ -1622,10 +1815,13 @@ function getBalance(facultyId, year) {
   const nd = getNormalDays(facultyId);
   const fl = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
 
-  // Aعتيادية
+  // اعتيادية
   const normalUsed    = fl.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
   const normalRefund  = fl.filter(l=>l.type==='normal-refund').reduce((s,l)=>s+l.days,0);
   const exceptionAdd  = fl.filter(l=>l.type==='exception').reduce((s,l)=>s+l.days,0);
+  // تتبع الساعات الزمنية فقط للعرض (الاستقطاع يتم عبر سجلات normal تلقائياً في saveHourlyLeave)
+  const hourlyUsedHours = fl.filter(l=>l.type==='hourly').reduce((s,l)=>s+(l.hours||0),0);
+  const hourlyDeductDays = Math.floor(hourlyUsedHours / 7);
   // مرضية
   const sickUsed      = fl.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
   const sickManualAdd = fl.filter(l=>l.type==='manual-sick-add').reduce((s,l)=>s+l.days,0);
@@ -1640,6 +1836,9 @@ function getBalance(facultyId, year) {
     normalUsed: Math.max(0, normalUsed - normalRefund),
     sickUsed,
     normalDays: nd + exceptionAdd,
+    hourlyUsedHours,
+    hourlyDeductDays,
+    hourlyRemainder: hourlyUsedHours % 7,
   };
 }
 
@@ -1787,7 +1986,7 @@ function renderProfile(id) {
       <div class="leave-block">
         <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
         <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
-        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم</div>
+        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم${bal.hourlyUsedHours > 0 ? ` | ⏱️ ساعات زمنية: ${bal.hourlyUsedHours} ساعة (${bal.hourlyDeductDays} يوم + ${bal.hourlyRemainder} ساعة)` : ''}</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
       </div>
       <div class="leave-block">
@@ -1818,9 +2017,9 @@ function renderProfile(id) {
                 <td>${leaveTypeBadge(l.type)}${l.cutDate?` <span style="font-size:11px;color:#64748b;">(مقطوعة ${l.cutDate})</span>`:''}</td>
                 <td>${l.fromDate}</td>
                 <td>${l.toDate}</td>
-                <td><strong>${l.days}</strong></td>
+                <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
                 <td>${l.year}</td>
-                <td>${l.notes||'—'}</td>
+                <td>${l.type==='hourly' && l.startTime ? `🕐 ${l.startTime} — ` : ''}${l.notes||'—'}</td>
                 <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
               </tr>`).join('') :
               `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة لهذا الموظف</p></div></td></tr>`
@@ -2125,9 +2324,9 @@ function renderLeavesLog() {
       <td>${leaveTypeBadge(l.type)}</td>
       <td>${l.fromDate}</td>
       <td>${l.toDate}</td>
-      <td><strong>${l.days}</strong></td>
+      <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
       <td>${l.year}</td>
-      <td>${l.notes||'—'}</td>
+      <td>${l.type==='hourly' && l.startTime ? `🕐 ${l.startTime} | ` : ''}${l.notes||'—'}</td>
       <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
     </tr>`;
   }).join('');
@@ -2595,6 +2794,8 @@ async function importDatabase(input) {
           renderDbInfo();
           showToast(`✅ تم استيراد ${faculty.length} موظف و${leaves.length} سجل بنجاح`, 'green');
           await logActivity(`⬆️ استيراد قاعدة بيانات: ${faculty.length} موظف`, 'orange');
+          // رفع البيانات المستوردة إلى Firebase
+          if (fbSyncEnabled) { showSyncStatus('جاري رفع البيانات إلى السحابة...','blue'); await pushLocalToFirebase(); showSyncStatus('✅ تم رفع البيانات إلى السحابة','green'); }
         } catch(err) { showToast('❌ حدث خطأ أثناء الاستيراد', 'red'); }
       });
     } catch(err) { showToast('❌ تعذر قراءة الملف', 'red'); }
@@ -2680,6 +2881,7 @@ function openLeaveTypeSelector() {
   let btns = `
     <button class="btn btn-green"  style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('normal')">📅 إجازة اعتيادية</button>
     <button class="btn btn-red"    style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('sick')">🏥 إجازة مرضية</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="closeModal('modal-leave-type');openHourlyLeave()">⏱️ إجازة زمنية (بالساعات)</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="closeModal('modal-leave-type');openStudyLeave()">📚 إجازة دراسية</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('long')">🏖️ إجازة طويلة</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 4px 14px rgba(5,150,105,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('fiveyear')">🗓️ إجازة 5 سنوات</button>`;
@@ -2806,6 +3008,104 @@ async function saveStudyLeave() {
   showToast('✅ تم تسجيل الإجازة الدراسية بنجاح', 'green');
   const fac = faculty.find(f=>f.id===currentFacultyId);
   await logActivity(`📚 إجازة دراسية (${days} يوم) — ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`, 'blue');
+}
+
+// ==================== HOURLY LEAVE ====================
+const HOURS_PER_DAY = 7; // كل 7 ساعات = يوم اعتيادي
+
+function openHourlyLeave() {
+  const years = getYearsList();
+  const cy = currentYear();
+  document.getElementById('hl-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('hl-start-time').value = '';
+  document.getElementById('hl-hours').value = '';
+  document.getElementById('hl-notes').value = '';
+  document.getElementById('hourly-info-box').style.display = 'none';
+  document.getElementById('hl-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-hourly-leave');
+}
+
+function calcHourlyDeduct() {
+  if (!currentFacultyId) return;
+  const hours = parseFloat(document.getElementById('hl-hours').value) || 0;
+  const year = document.getElementById('hl-year').value;
+  const box = document.getElementById('hourly-info-box');
+  if (!hours || hours <= 0) { box.style.display = 'none'; return; }
+
+  const bal = getBalance(currentFacultyId, year);
+  const existingHours = bal.hourlyUsedHours;
+  const newTotalHours = existingHours + hours;
+  const newDeductDays = Math.floor(newTotalHours / HOURS_PER_DAY);
+  const oldDeductDays = Math.floor(existingHours / HOURS_PER_DAY);
+  const addedDays = newDeductDays - oldDeductDays;
+  const remainderHours = newTotalHours % HOURS_PER_DAY;
+
+  box.style.display = 'block';
+  let html = `<span style="color:#d97706;font-weight:700;">⏱️ عدد الساعات المطلوبة: <strong>${hours}</strong> ساعة</span><br>`;
+  html += `<span style="color:#64748b;">📊 إجمالي الساعات الزمنية المتراكمة: <strong>${newTotalHours}</strong> ساعة (كل 7 ساعات = يوم اعتيادي)</span><br>`;
+  if (addedDays > 0) {
+    html += `<span style="color:var(--red);font-weight:700;">📅 سيتم استقطاع <strong>${addedDays}</strong> يوم من الإجازة الاعتيادية (اكتمل ${newDeductDays} يوم)</span><br>`;
+  }
+  html += `<span style="color:#059669;">الرصيد الاعتيادي المتبقي بعد الاستقطاع: <strong>${bal.normal - addedDays}</strong> يوم | الساعات المتبقية لاكتمال يوم: <strong>${remainderHours > 0 ? HOURS_PER_DAY - remainderHours : HOURS_PER_DAY}</strong> ساعة</span>`;
+  box.innerHTML = html;
+}
+
+async function saveHourlyLeave() {
+  const date = document.getElementById('hl-date').value;
+  const startTime = document.getElementById('hl-start-time').value;
+  const hours = parseFloat(document.getElementById('hl-hours').value);
+  const year = document.getElementById('hl-year').value;
+  const notes = document.getElementById('hl-notes').value.trim();
+
+  if (!date) { showToast('⚠️ الرجاء تحديد تاريخ الإجازة', 'red'); return; }
+  if (!startTime) { showToast('⚠️ الرجاء تحديد وقت بداية الإجازة', 'red'); return; }
+  if (!hours || hours <= 0) { showToast('⚠️ الرجاء إدخال عدد ساعات صحيح', 'red'); return; }
+
+  const bal = getBalance(currentFacultyId, year);
+  const existingHours = bal.hourlyUsedHours;
+  const newTotalHours = existingHours + hours;
+  const newDeductDays = Math.floor(newTotalHours / HOURS_PER_DAY);
+  const oldDeductDays = Math.floor(existingHours / HOURS_PER_DAY);
+  const addedDays = newDeductDays - oldDeductDays;
+
+  if (addedDays > 0 && bal.normal < addedDays) {
+    showToast(`❌ الرصيد الاعتيادي غير كافٍ — متبقي ${bal.normal} يوم ويلزم ${addedDays} يوم`, 'red');
+    return;
+  }
+
+  await addLeaveRecord({
+    facultyId: currentFacultyId,
+    type: 'hourly',
+    days: 0,
+    hours: hours,
+    fromDate: date,
+    toDate: date,
+    startTime: startTime,
+    year,
+    notes: notes || `إجازة زمنية ${hours} ساعة — بداية ${startTime}`,
+  });
+
+  if (addedDays > 0) {
+    await addLeaveRecord({
+      facultyId: currentFacultyId,
+      type: 'normal',
+      days: addedDays,
+      fromDate: date,
+      toDate: date,
+      year,
+      notes: `استقطاع تلقائي — اكتمل ${newDeductDays * HOURS_PER_DAY} ساعة زمنية (كل 7 ساعات = يوم اعتيادي)`,
+      autoDeduct: true,
+    });
+  }
+
+  closeModal('modal-hourly-leave');
+  await renderProfile(currentFacultyId);
+  renderFacultyList();
+  renderDashboard();
+  const deductMsg = addedDays > 0 ? ` — تم استقطاع ${addedDays} يوم اعتيادي` : '';
+  showToast(`✅ تم تسجيل الإجازة الزمنية (${hours} ساعة)${deductMsg}`, addedDays > 0 ? 'orange' : 'green');
+  const fac = faculty.find(f => f.id === currentFacultyId);
+  await logActivity(`⏱️ إجازة زمنية ${hours} ساعة — ${fac?.name||''}${deductMsg}`, 'orange');
 }
 
 // ==================== MANUAL BALANCE EDIT ====================
@@ -3350,7 +3650,10 @@ async function doLogin() {
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
     try { await logActivity('🔑 تسجيل الدخول إلى النظام','green'); } catch(e){}
     try { await renderActivityList(); } catch(e){}
-    init();
+    await init();
+    // تفعيل المزامنة بعد تحميل البيانات المحلية
+    fbSyncEnabled = true;
+    syncFromFirebase(); // لا await — تعمل في الخلفية
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
@@ -3360,6 +3663,7 @@ async function doLogin() {
 
 async function doLogout() {
   await logActivity('🚪 تسجيل الخروج من النظام', 'red');
+  fbSyncEnabled = false;
   currentUser = null;
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('user-topbar').style.display = 'none';
