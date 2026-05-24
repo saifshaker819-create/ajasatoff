@@ -17,118 +17,6 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
   <link rel="shortcut icon" href="favicon.ico">
 
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAUW1D0O6wuI0XFJ-DgIxq75DV-bt5Q3yw",
-    authDomain: "holidays-23658.firebaseapp.com",
-    projectId: "holidays-23658",
-    storageBucket: "holidays-23658.firebasestorage.app",
-    messagingSenderId: "709380474412",
-    appId: "1:709380474412:web:1277c851d70eec1a7fb389",
-    measurementId: "G-RQ7T5S1EQ6"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const fsdb = firebase.firestore();
-
-  // ==================== FIREBASE SYNC ====================
-  // المزامنة تعمل في الخلفية — IDB هو المصدر الأساسي للسرعة
-
-  let fbSyncEnabled = false; // يُفعَّل بعد تسجيل الدخول
-
-  async function fbPut(collection, obj) {
-    if (!fbSyncEnabled) return;
-    try {
-      await fsdb.collection(collection).doc(String(obj.id)).set(obj);
-    } catch(e) { console.warn('Firebase write failed:', e.message); }
-  }
-
-  async function fbDelete(collection, id) {
-    if (!fbSyncEnabled) return;
-    try {
-      await fsdb.collection(collection).doc(String(id)).delete();
-    } catch(e) { console.warn('Firebase delete failed:', e.message); }
-  }
-
-  // مزامنة كاملة: Firebase → IDB (عند أول دخول أو طلب تحديث)
-  async function syncFromFirebase() {
-    try {
-      showSyncStatus('جاري المزامنة مع السحابة...', 'blue');
-
-      const [facSnap, leavSnap] = await Promise.all([
-        fsdb.collection('faculty').get(),
-        fsdb.collection('leaves').get()
-      ]);
-
-      const fbFaculty = facSnap.docs.map(d => d.data());
-      const fbLeaves  = leavSnap.docs.map(d => d.data());
-
-      if (fbFaculty.length === 0 && fbLeaves.length === 0) {
-        // Firebase فارغ → ارفع البيانات المحلية إليه
-        await pushLocalToFirebase();
-        showSyncStatus('✅ تم رفع البيانات المحلية إلى السحابة', 'green');
-        return;
-      }
-
-      // Firebase فيه بيانات → استبدل المحلي بها
-      const allLocalFac = await dbAll('faculty');
-      const allLocalLeav = await dbAll('leaves');
-      for (const f of allLocalFac)  await dbDelete('faculty', f.id);
-      for (const l of allLocalLeav) await dbDelete('leaves', l.id);
-      for (const f of fbFaculty)    await dbPut('faculty', f);
-      for (const l of fbLeaves)     await dbPut('leaves', l);
-
-      faculty = await dbAll('faculty');
-      leaves  = await dbAll('leaves');
-
-      renderDashboard();
-      renderFacultyList();
-      populateFilters();
-
-      showSyncStatus(`✅ تمت المزامنة — ${fbFaculty.length} موظف، ${fbLeaves.length} سجل`, 'green');
-    } catch(e) {
-      showSyncStatus('⚠️ تعذرت المزامنة — يعمل محلياً', 'orange');
-      console.warn('Sync error:', e.message);
-    }
-  }
-
-  async function pushLocalToFirebase() {
-    try {
-      const allFac  = await dbAll('faculty');
-      const allLeav = await dbAll('leaves');
-      const batch_size = 400;
-      // faculty
-      for (let i = 0; i < allFac.length; i += batch_size) {
-        const batch = fsdb.batch();
-        allFac.slice(i, i + batch_size).forEach(f => {
-          batch.set(fsdb.collection('faculty').doc(String(f.id)), f);
-        });
-        await batch.commit();
-      }
-      // leaves
-      for (let i = 0; i < allLeav.length; i += batch_size) {
-        const batch = fsdb.batch();
-        allLeav.slice(i, i + batch_size).forEach(l => {
-          batch.set(fsdb.collection('leaves').doc(String(l.id)), l);
-        });
-        await batch.commit();
-      }
-    } catch(e) { console.warn('Push error:', e.message); }
-  }
-
-  function showSyncStatus(msg, type) {
-    let el = document.getElementById('sync-status-bar');
-    if (!el) return;
-    const colors = { green:'#10b981', orange:'#f59e0b', blue:'#6366f1', red:'#ef4444' };
-    el.style.display = 'flex';
-    el.style.borderColor = colors[type] || colors.blue;
-    el.querySelector('#sync-msg').textContent = msg;
-    if (type === 'green') setTimeout(() => { el.style.display = 'none'; }, 4000);
-  }
-</script>
-
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -236,7 +124,6 @@
     box-shadow: 0 2px 8px rgba(99,102,241,0.08);
   }
   .nav-item .icon { font-size:18px; min-width:24px; text-align:center; }
-  .nav-item span:not(.icon):not(.nav-badge) { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .nav-badge { margin-right:auto; background:var(--accent3); color:#fff; font-size:11px; font-weight:700; padding:2px 7px; border-radius:20px; }
 
   .sidebar-footer { margin-top:auto; padding-top:16px; border-top:1px solid rgba(99,102,241,0.1); }
@@ -547,32 +434,53 @@
 
   .half-salary-row { background:rgba(245,158,11,0.07) !important; }
   .half-salary-row td { color:#000 !important; font-weight:600; }
+  .badge-teal { background:rgba(20,184,166,0.1); color:#0d9488; }
+  .half-salary-row td { color:#000 !important; font-weight:600; }
 
-  /* ===== SYNC STATUS BAR ===== */
-  #sync-status-bar {
-    display: none;
-    position: fixed;
-    top: 52px; right: var(--sidebar-w); left: 0;
-    z-index: 79;
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(12px);
-    border-bottom: 2px solid #6366f1;
-    padding: 7px 20px;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #000;
+  /* ===== OFFICIAL LETTERS SECTION ===== */
+  .letter-section {
+    margin-top:16px;
+    border:1.5px dashed rgba(99,102,241,0.3);
+    border-radius:14px;
+    padding:16px;
+    background:rgba(99,102,241,0.03);
   }
-  #sync-status-bar .sync-spinner {
-    width: 16px; height: 16px;
-    border: 2px solid rgba(99,102,241,0.3);
-    border-top-color: #6366f1;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    flex-shrink: 0;
+  .letter-section-title {
+    font-size:14px; font-weight:800; color:#4f46e5;
+    margin-bottom:12px; display:flex; align-items:center; gap:8px;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .letter-item {
+    background:rgba(255,255,255,0.7);
+    border:1px solid rgba(99,102,241,0.15);
+    border-radius:10px;
+    padding:12px 14px;
+    margin-bottom:8px;
+    display:flex; align-items:flex-start; gap:10px;
+  }
+  .letter-item-icon { font-size:20px; flex-shrink:0; margin-top:2px; }
+  .letter-item-body { flex:1; }
+  .letter-item-num { font-size:14px; font-weight:800; color:#1e293b; }
+  .letter-item-date { font-size:12px; color:#64748b; margin-top:2px; }
+  .letter-item-subject { font-size:13px; color:#334155; margin-top:4px; line-height:1.5; }
+  .letter-item-actions { display:flex; flex-direction:column; gap:4px; flex-shrink:0; }
+  .add-letter-btn {
+    display:flex; align-items:center; gap:6px;
+    padding:8px 14px; border-radius:9px;
+    background:linear-gradient(135deg,rgba(99,102,241,0.1),rgba(37,99,235,0.08));
+    border:1.5px dashed rgba(99,102,241,0.35);
+    color:#4f46e5; font-size:13px; font-weight:700;
+    cursor:pointer; font-family:inherit; width:100%;
+    justify-content:center; transition:all 0.2s;
+    margin-top:8px;
+  }
+  .add-letter-btn:hover { background:rgba(99,102,241,0.15); border-style:solid; }
+  .letters-view-tag {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 9px; border-radius:20px;
+    background:rgba(99,102,241,0.1); color:#4f46e5;
+    font-size:12px; font-weight:700; cursor:pointer;
+  }
+  .letters-view-tag:hover { background:rgba(99,102,241,0.2); }
 
   /* ===== LOGIN SCREEN ===== */
   #login-screen {
@@ -711,15 +619,28 @@
     </button>
     <div id="login-reset-area" style="margin-top:16px;text-align:center;">
       <button onclick="toggleResetArea()" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;font-family:inherit;">
-        مشكلة في تسجيل الدخول؟
+        🔒 نسيت كلمة المرور؟
       </button>
-      <div id="reset-box" style="display:none;margin-top:10px;padding:12px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:12px;font-size:13px;">
-        <div style="color:#64748b;margin-bottom:8px;">إعادة تعيين كلمات المرور إلى الافتراضية:</div>
-        <div style="color:#1e293b;font-weight:700;margin-bottom:10px;">admin01 → 2211 &nbsp;|&nbsp; admin95 → 1010</div>
-        <button onclick="resetPasswords()" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:13px;font-family:inherit;cursor:pointer;font-weight:700;">
-          🔄 إعادة تعيين
+      <div id="reset-box" style="display:none;margin-top:12px;padding:14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);border-radius:12px;text-align:right;">
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:4px;">🔑 رمز الطوارئ</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:10px;">أدخل رمز الطوارئ السري لإعادة تعيين كلمات المرور إلى قيمها الافتراضية.</div>
+        <input id="emergency-code-input" type="password" placeholder="رمز الطوارئ السري"
+          style="width:100%;padding:9px 12px;border:1.5px solid rgba(99,102,241,0.3);border-radius:8px;font-size:14px;font-family:inherit;direction:ltr;text-align:left;margin-bottom:10px;background:#fff;outline:none;box-sizing:border-box;"
+          onkeydown="if(event.key==='Enter') verifyEmergencyCode()">
+        <button onclick="verifyEmergencyCode()" style="width:100%;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;border:none;border-radius:8px;padding:9px 0;font-size:13px;font-family:inherit;cursor:pointer;font-weight:700;">
+          ✅ تحقق وإعادة التعيين
         </button>
+        <div id="emergency-error" style="display:none;margin-top:8px;font-size:12px;color:#dc2626;font-weight:700;text-align:center;"></div>
       </div>
+    </div>
+
+    <!-- زر الدعم الفني - شاشة الدخول -->
+    <div style="margin-top:20px;text-align:center;">
+      <a href="https://wa.me/9647807632797" target="_blank"
+         style="display:inline-flex;align-items:center;gap:8px;padding:10px 22px;background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;border-radius:12px;font-size:13px;font-weight:700;text-decoration:none;box-shadow:0 4px 14px rgba(37,211,102,0.35);transition:opacity 0.2s;"
+         onmouseenter="this.style.opacity='0.85'" onmouseleave="this.style.opacity='1'">
+        <span style="font-size:18px;">💬</span> الدعم الفني
+      </a>
     </div>
   </div>
 </div>
@@ -730,16 +651,8 @@
     <div class="topbar-avatar" id="topbar-avatar-letter">A</div>
     <span id="topbar-username">—</span>
   </div>
-  <button class="btn btn-outline btn-sm" onclick="syncFromFirebase()" title="مزامنة مع السحابة" style="gap:6px;">☁️ مزامنة</button>
   <button class="btn btn-outline btn-sm" onclick="openChangePassword()" title="تغيير كلمة المرور" style="gap:6px;">🔒 تغيير الرمز السري</button>
   <button class="btn btn-outline btn-sm" onclick="doLogout()" style="color:var(--red);border-color:rgba(239,68,68,0.25);">🚪 خروج</button>
-</div>
-
-<!-- ===== SYNC STATUS BAR ===== -->
-<div id="sync-status-bar">
-  <div class="sync-spinner"></div>
-  <span id="sync-msg">جاري المزامنة...</span>
-  <button onclick="document.getElementById('sync-status-bar').style.display='none'" style="margin-right:auto;background:none;border:none;cursor:pointer;font-size:14px;color:#64748b;">✕</button>
 </div>
 
 <!-- ===== ACTIVITY LOG PANEL ===== -->
@@ -754,7 +667,6 @@
   <div class="activity-list" id="activity-list">
     <div class="activity-empty">لا توجد عمليات مسجلة بعد</div>
   </div>
-  <button class="activity-clear-btn" onclick="clearActivityLog()">🗑️ مسح السجل</button>
 </div>
 
 <!-- ===== CHANGE PASSWORD MODAL ===== -->
@@ -798,30 +710,31 @@
 
     <div class="nav-section">القائمة الرئيسية</div>
     <div class="nav-item active" onclick="showPage('dashboard')">
-      <span class="icon">🏠</span> <span>الرئيسية</span>
+      <span class="icon">🏠</span> الرئيسية
     </div>
     <div class="nav-item" onclick="showPage('faculty')">
-      <span class="icon">👤</span> <span>الموظفون</span>
+      <span class="icon">👤</span> الموظفون
       <span class="nav-badge" id="nav-count">0</span>
     </div>
     <div class="nav-item" onclick="showPage('leaves')">
-      <span class="icon">📅</span> <span>سجل الإجازات</span>
+      <span class="icon">📅</span> سجل الإجازات
     </div>
 
     <div class="nav-section" style="margin-top:12px;">التقارير</div>
     <div class="nav-item" onclick="showPage('statistics')">
-      <span class="icon">📊</span> <span>الإحصائيات والتقارير</span>
+      <span class="icon">📊</span> الإحصائيات والتقارير
     </div>
 
     <div class="nav-section" style="margin-top:12px;">النظام</div>
     <div class="nav-item" onclick="showPage('database')">
-      <span class="icon">🗄️</span> <span>قاعدة البيانات</span>
+      <span class="icon">🗄️</span> قاعدة البيانات
     </div>
-    <div class="nav-item" onclick="openGlobalYearClose()" style="background:linear-gradient(135deg,rgba(245,158,11,0.13),rgba(249,115,22,0.08));border:1px solid rgba(245,158,11,0.25);color:#92400e;font-weight:800;">
-      <span class="icon">⚡</span> <span>إغلاق السنة وترحيل الإجازات</span>
+    <div onclick="openGlobalYearClose()" style="display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:var(--radius-sm);cursor:pointer;margin-bottom:3px;background:linear-gradient(135deg,rgba(245,158,11,0.18),rgba(249,115,22,0.12));border:1.5px solid rgba(245,158,11,0.35);color:#92400e;font-weight:800;font-size:14px;line-height:1.4;transition:all 0.2s;" onmouseenter="this.style.background='linear-gradient(135deg,rgba(245,158,11,0.28),rgba(249,115,22,0.20))'" onmouseleave="this.style.background='linear-gradient(135deg,rgba(245,158,11,0.18),rgba(249,115,22,0.12))'">
+      <span style="font-size:18px;min-width:24px;text-align:center;">⚡</span>
+      <span>إغلاق السنة<br><span style="font-size:12px;font-weight:600;opacity:0.85;">وترحيل الإجازات</span></span>
     </div>
     <div class="activity-toggle-btn" onclick="toggleActivityPanel()">
-      <span class="icon">📋</span> <span>سجل العمليات</span>
+      <span class="icon">📋</span> سجل العمليات
       <span class="nav-badge" id="activity-count-badge" style="display:none;">0</span>
     </div>
 
@@ -830,6 +743,11 @@
         <span>السنة الدراسية الحالية</span>
         <span id="current-year-label">—</span>
       </div>
+      <a href="https://wa.me/9647807632797" target="_blank"
+         style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px;background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;border-radius:12px;font-size:13px;font-weight:700;text-decoration:none;box-shadow:0 4px 12px rgba(37,211,102,0.3);transition:opacity 0.2s;"
+         onmouseenter="this.style.opacity='0.85'" onmouseleave="this.style.opacity='1'">
+        <span style="font-size:16px;">💬</span> الدعم الفني
+      </a>
     </div>
   </nav>
 
@@ -912,7 +830,12 @@
           <div class="page-title" id="profile-name-header"></div>
           <div class="page-subtitle" id="profile-dept-header"></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:12px;font-weight:700;color:#64748b;">📅 فلتر السنة</label>
+            <select id="profile-year-filter" onchange="profileYear=this.value;renderProfile(currentFacultyId)" style="padding:8px 12px;border-radius:9px;border:1px solid rgba(99,102,241,0.2);background:rgba(255,255,255,0.7);font-family:inherit;font-size:14px;font-weight:700;color:#000;outline:none;cursor:pointer;min-width:120px;">
+            </select>
+          </div>
           <button class="btn btn-primary" onclick="openLeaveTypeSelector()">📋 إجازة</button>
           <button class="btn btn-outline" onclick="openManualBalance()" title="تعديل الرصيد يدوياً">✏️ تعديل الرصيد</button>
           <button class="btn btn-outline" onclick="openEditFaculty()">⚙️ تعديل البيانات</button>
@@ -921,6 +844,101 @@
       </div>
 
       <div id="profile-content"></div>
+    </div>
+
+    <!-- ===== ADD/EDIT FACULTY PAGE ===== -->
+    <div class="page" id="page-add-faculty">
+      <div class="page-header">
+        <div>
+          <button class="btn btn-outline btn-sm" onclick="cancelAddFaculty()" style="margin-bottom:8px;">← رجوع</button>
+          <div class="page-title" id="faculty-page-title">إضافة موظف جديد</div>
+          <div class="page-subtitle" id="faculty-page-subtitle">أدخل بيانات الموظف أدناه</div>
+        </div>
+      </div>
+
+      <div class="glass-card" style="max-width:820px;margin:0 auto;">
+        <!-- نوع الموظف badge -->
+        <div id="f-type-badge" style="margin-bottom:18px;padding:10px 16px;border-radius:12px;font-size:14px;font-weight:700;display:none;"></div>
+        <input type="hidden" id="f-type" value="employee">
+
+        <!-- اسم موجود تحذير -->
+        <div id="f-name-dup-warn" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:10px;background:rgba(239,68,68,0.09);border:1.5px solid rgba(239,68,68,0.3);font-size:14px;font-weight:700;color:var(--red);">
+          ⚠️ هذا الاسم موجود مسبقاً في النظام — الرجاء التحقق
+        </div>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">الاسم الكامل *</label>
+            <input class="form-input" id="f-name" placeholder="أدخل الاسم الكامل" oninput="checkDuplicateName()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">القسم</label>
+            <input class="form-input" id="f-dept" placeholder="مثال: قسم الموارد البشرية">
+          </div>
+          <div class="form-group">
+            <label class="form-label">رقم التوظيف</label>
+            <input class="form-input" id="f-empno" placeholder="اختياري">
+          </div>
+          <div class="form-group">
+            <label class="form-label">العنوان الوظيفي</label>
+            <input class="form-input" id="f-rank" placeholder="مثال: مدير، محاسب، مهندس...">
+          </div>
+          <div class="form-group">
+            <label class="form-label">سنة التعيين</label>
+            <input class="form-input" id="f-hire" type="number" placeholder="مثال: 2015">
+          </div>
+          <div class="form-group">
+            <label class="form-label">الجنس *</label>
+            <select class="form-select" id="f-gender">
+              <option value="">-- اختر الجنس --</option>
+              <option value="male">ذكر 👨</option>
+              <option value="female">أنثى 👩</option>
+            </select>
+          </div>
+          <div class="form-group" id="f-cumulative-group">
+            <label class="form-label">رصيد تراكمي أولي (أيام)</label>
+            <input class="form-input" id="f-cumulative" type="number" min="0" value="0">
+          </div>
+          <div class="form-group" id="f-sick-cumulative-group">
+            <label class="form-label">رصيد مرضي تراكمي أولي (أيام)</label>
+            <input class="form-input" id="f-sick-cumulative" type="number" min="0" value="0" placeholder="0">
+          </div>
+        </div>
+
+        <!-- تحذير منسب -->
+        <div id="f-status-info" style="display:none;margin-bottom:12px;padding:10px 16px;border-radius:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);font-size:13px;color:#92400e;font-weight:700;">
+          ⚠️ الموظف المنسب لا يكون له أي رصيد اعتيادي أو تراكمي أو مرضي.
+        </div>
+
+        <!-- بلوك تفعيل منسب → مستمر -->
+        <div id="f-activation-block" style="display:none;margin-bottom:16px;padding:16px;border-radius:12px;background:rgba(16,185,129,0.07);border:1.5px solid rgba(16,185,129,0.25);">
+          <div style="font-size:15px;font-weight:800;color:#059669;margin-bottom:8px;">✅ تحويل من منسب إلى مستمر</div>
+          <div style="font-size:13px;color:#064e3b;margin-bottom:14px;" id="f-activation-desc">سيُعتبر اليوم تاريخ المباشرة وسيُحسب الرصيد الاعتيادي النسبي (كل 10 أيام عمل = يوم إجازة اعتيادية).</div>
+          <div class="form-grid">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">رصيد تراكمي اعتيادي (اختياري)</label>
+              <input class="form-input" id="f-activation-cum" type="number" min="0" value="0" placeholder="0">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">رصيد مرضي تراكمي (اختياري)</label>
+              <input class="form-input" id="f-activation-sick-cum" type="number" min="0" value="0" placeholder="0">
+            </div>
+          </div>
+        </div>
+
+        <!-- حالة الموظف + أزرار الحفظ والإلغاء في صف واحد -->
+        <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:4px;">
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:160px;">
+            <label class="form-label" style="margin-bottom:0;">حالة الموظف</label>
+            <select class="form-select" id="f-status" onchange="onFacultyStatusChange()">
+              <option value="active">مستمر ✅</option>
+              <option value="seconded">منسب 🔄</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" style="padding:12px 28px;font-size:15px;height:46px;" onclick="saveFaculty()">💾 حفظ البيانات</button>
+          <button class="btn btn-outline" style="padding:12px 22px;height:46px;" onclick="cancelAddFaculty()">إلغاء</button>
+        </div>
+      </div>
     </div>
 
     <!-- ===== LEAVES LOG ===== -->
@@ -956,7 +974,8 @@
               <option value="postbirth">بعد الوضع</option>
               <option value="maternity">إجازة أمومة</option>
               <option value="maternity-ext">تمديد أمومة</option>
-              <option value="hourly">زمنية (بالساعات)</option>
+              <option value="hourly">زمنية (ساعات)</option>
+              <option value="hourly-deduct">استقطاع زمني → اعتيادي</option>
             </select>
           </div>
           <div class="filter-item">
@@ -994,6 +1013,7 @@
               <th>الأيام</th>
               <th>السنة</th>
               <th>ملاحظات</th>
+              <th>📄 كتاب</th>
               <th>إجراء</th>
             </tr></thead>
             <tbody id="leaves-log-body"></tbody>
@@ -1103,6 +1123,27 @@
         </div>
       </div>
 
+      <!-- WhatsApp Share Card -->
+      <div class="glass-card" style="border:1.5px solid rgba(37,211,102,0.3);background:rgba(37,211,102,0.04);margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
+          <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#25D366,#128C7E);display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 4px 14px rgba(37,211,102,0.35);">📱</div>
+          <div>
+            <div style="font-size:17px;font-weight:800;color:var(--text-dark);">مشاركة قاعدة البيانات عبر واتس اب</div>
+            <div style="font-size:12px;color:var(--text-light);margin-top:2px;">تنزيل النسخة الاحتياطية ومشاركتها مباشرة</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:200px;">
+            <label style="font-size:14px;font-weight:700;color:#000;margin-bottom:6px;display:block;">📞 رقم الواتس اب</label>
+            <input class="form-input" id="wa-phone" type="tel" placeholder="مثال: 9647801234567" style="direction:ltr;text-align:left;" oninput="saveWaPhone()">
+            <div style="font-size:11px;color:#64748b;margin-top:4px;">أدخل الرقم مع رمز البلد بدون + (مثال: 964 للعراق)</div>
+          </div>
+          <button class="btn" style="background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;box-shadow:0 4px 14px rgba(37,211,102,0.4);padding:12px 20px;white-space:nowrap;" onclick="shareViaWhatsapp()">
+            📤 مشاركة عبر واتس اب
+          </button>
+        </div>
+      </div>
+
       <!-- DB Info -->
       <div class="glass-card">
         <div class="section-title"><span class="dot" style="background:var(--accent3)"></span>معلومات قاعدة البيانات الحالية</div>
@@ -1115,56 +1156,7 @@
 
 <!-- ===== MODALS ===== -->
 
-<!-- Add/Edit Faculty Modal -->
-<div class="modal-overlay" id="modal-faculty">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="faculty-modal-title">إضافة موظف</div>
-      <button class="modal-close" onclick="closeModal('modal-faculty')">✕</button>
-    </div>
-    <!-- Employee type badge (readonly display) -->
-    <div id="f-type-badge" style="margin-bottom:14px;padding:8px 14px;border-radius:10px;font-size:14px;font-weight:700;display:none;"></div>
-    <input type="hidden" id="f-type" value="employee">
-    <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">الاسم الكامل *</label>
-        <input class="form-input" id="f-name" placeholder="أدخل الاسم الكامل">
-      </div>
-      <div class="form-group">
-        <label class="form-label">القسم *</label>
-        <input class="form-input" id="f-dept" placeholder="مثال: قسم الموارد البشرية">
-      </div>
-      <div class="form-group">
-        <label class="form-label">رقم التوظيف</label>
-        <input class="form-input" id="f-empno" placeholder="اختياري">
-      </div>
-      <div class="form-group">
-        <label class="form-label">العنوان الوظيفي</label>
-        <input class="form-input" id="f-rank" placeholder="مثال: مدير، محاسب، مهندس...">
-      </div>
-      <div class="form-group">
-        <label class="form-label">سنة التعيين</label>
-        <input class="form-input" id="f-hire" type="number" placeholder="مثال: 2015">
-      </div>
-      <div class="form-group">
-        <label class="form-label">الجنس *</label>
-        <select class="form-select" id="f-gender">
-          <option value="">-- اختر الجنس --</option>
-          <option value="male">ذكر 👨</option>
-          <option value="female">أنثى 👩</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">رصيد تراكمي أولي (أيام)</label>
-        <input class="form-input" id="f-cumulative" type="number" min="0" value="0">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-primary" onclick="saveFaculty()">💾 حفظ</button>
-      <button class="btn btn-outline" onclick="closeModal('modal-faculty')">إلغاء</button>
-    </div>
-  </div>
-</div>
+<!-- Add/Edit Faculty - Full Page (replaces modal) -->
 
 <!-- Add Leave Modal -->
 <div class="modal-overlay" id="modal-leave">
@@ -1196,6 +1188,30 @@
       <input class="form-input" id="l-notes" placeholder="ملاحظات إضافية (اختياري)">
     </div>
     <div id="leave-info-box" style="padding:12px 16px; border-radius:10px; background:rgba(99,102,241,0.07); border:1px solid rgba(99,102,241,0.12); font-size:13px; color:var(--text-mid); margin-bottom:4px; display:none;"></div>
+
+    <!-- قسم الكتاب الرسمي -->
+    <div class="letter-section">
+      <div class="letter-section-title">📄 الكتاب الرسمي / الوثيقة المرفقة <span style="font-weight:400;font-size:12px;color:#64748b;">(اختياري)</span></div>
+      <div class="form-grid">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">رقم الكتاب</label>
+          <input class="form-input" id="l-letter-num" placeholder="مثال: 1234">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">تاريخ الكتاب</label>
+          <input class="form-input" id="l-letter-date" type="date">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label class="form-label">عنوان / موضوع الكتاب</label>
+        <input class="form-input" id="l-letter-title" placeholder="مثال: طلب منح إجازة اعتيادية">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">ملاحظات الكتاب</label>
+        <input class="form-input" id="l-letter-notes" placeholder="تفاصيل إضافية عن الكتاب (اختياري)">
+      </div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="saveLeave()">💾 تسجيل الإجازة</button>
       <button class="btn btn-outline" onclick="closeModal('modal-leave')">إلغاء</button>
@@ -1239,6 +1255,30 @@
       <input class="form-input" id="el-notes" placeholder="ملاحظات إضافية (اختياري)">
     </div>
     <div id="ext-leave-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.12);font-size:13px;color:var(--text-mid);margin-bottom:4px;display:none;"></div>
+
+    <!-- قسم الكتاب الرسمي -->
+    <div class="letter-section">
+      <div class="letter-section-title">📄 الكتاب الرسمي / الوثيقة المرفقة <span style="font-weight:400;font-size:12px;color:#64748b;">(اختياري)</span></div>
+      <div class="form-grid">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">رقم الكتاب</label>
+          <input class="form-input" id="el-letter-num" placeholder="مثال: 1234">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">تاريخ الكتاب</label>
+          <input class="form-input" id="el-letter-date" type="date">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label class="form-label">عنوان / موضوع الكتاب</label>
+        <input class="form-input" id="el-letter-title" placeholder="مثال: طلب منح إجازة طويلة">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">ملاحظات الكتاب</label>
+        <input class="form-input" id="el-letter-notes" placeholder="تفاصيل إضافية عن الكتاب (اختياري)">
+      </div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="saveExtLeave()">💾 تسجيل الإجازة</button>
       <button class="btn btn-outline" onclick="closeModal('modal-extended-leave')">إلغاء</button>
@@ -1295,6 +1335,30 @@
       <input class="form-input" id="exc-notes" placeholder="سبب الاستثناء (اختياري)">
     </div>
     <div id="exc-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(8,145,178,0.07);border:1px solid rgba(8,145,178,0.2);font-size:13px;color:#0891b2;margin-bottom:4px;display:none;"></div>
+
+    <!-- قسم الكتاب الرسمي -->
+    <div class="letter-section">
+      <div class="letter-section-title">📄 الكتاب الرسمي / الوثيقة المرفقة <span style="font-weight:400;font-size:12px;color:#64748b;">(اختياري)</span></div>
+      <div class="form-grid">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">رقم الكتاب</label>
+          <input class="form-input" id="exc-letter-num" placeholder="مثال: 1234">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">تاريخ الكتاب</label>
+          <input class="form-input" id="exc-letter-date" type="date">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label class="form-label">عنوان / موضوع الكتاب</label>
+        <input class="form-input" id="exc-letter-title" placeholder="مثال: قرار استثناء">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">ملاحظات الكتاب</label>
+        <input class="form-input" id="exc-letter-notes" placeholder="تفاصيل إضافية (اختياري)">
+      </div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn" style="background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="saveException()">💾 إضافة الأيام للرصيد</button>
       <button class="btn btn-outline" onclick="closeModal('modal-exception')">إلغاء</button>
@@ -1332,6 +1396,30 @@
       <input class="form-input" id="sl-notes" placeholder="ملاحظات إضافية (اختياري)">
     </div>
     <div id="sl-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.12);font-size:13px;margin-bottom:4px;display:none;"></div>
+
+    <!-- قسم الكتاب الرسمي -->
+    <div class="letter-section">
+      <div class="letter-section-title">📄 الكتاب الرسمي / الوثيقة المرفقة <span style="font-weight:400;font-size:12px;color:#64748b;">(اختياري)</span></div>
+      <div class="form-grid">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">رقم الكتاب</label>
+          <input class="form-input" id="sl-letter-num" placeholder="مثال: 1234">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">تاريخ الكتاب</label>
+          <input class="form-input" id="sl-letter-date" type="date">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label class="form-label">عنوان / موضوع الكتاب</label>
+        <input class="form-input" id="sl-letter-title" placeholder="مثال: طلب إجازة دراسية">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">ملاحظات الكتاب</label>
+        <input class="form-input" id="sl-letter-notes" placeholder="تفاصيل إضافية (اختياري)">
+      </div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn" style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="saveStudyLeave()">💾 تسجيل الإجازة الدراسية</button>
       <button class="btn btn-outline" onclick="closeModal('modal-study-leave')">إلغاء</button>
@@ -1339,38 +1427,63 @@
   </div>
 </div>
 
+
 <!-- Hourly Leave Modal -->
 <div class="modal-overlay" id="modal-hourly-leave">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <div class="modal-title">&#x23F1;&#xFE0F; إجازة زمنية (بالساعات)</div>
-      <button class="modal-close" onclick="closeModal('modal-hourly-leave')">&#x2715;</button>
+      <div class="modal-title">⏰ إضافة إجازة زمنية (ساعات)</div>
+      <button class="modal-close" onclick="closeModal('modal-hourly-leave')">✕</button>
     </div>
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">تاريخ الإجازة *</label>
-        <input class="form-input" id="hl-date" type="date" oninput="calcHourlyDeduct()">
+        <input class="form-input" id="hl-date" type="date" oninput="updateHourlyInfo()">
       </div>
       <div class="form-group">
         <label class="form-label">وقت البداية *</label>
-        <input class="form-input" id="hl-start-time" type="time" oninput="calcHourlyDeduct()">
+        <input class="form-input" id="hl-start-time" type="time" oninput="updateHourlyInfo()">
       </div>
       <div class="form-group">
         <label class="form-label">عدد الساعات *</label>
-        <input class="form-input" id="hl-hours" type="number" min="0.5" max="14" step="0.5" placeholder="مثال: 2 أو 3.5" oninput="calcHourlyDeduct()">
+        <input class="form-input" id="hl-hours" type="number" min="0.5" max="24" step="0.5" placeholder="مثال: 2 أو 3.5" oninput="updateHourlyInfo()">
       </div>
       <div class="form-group">
         <label class="form-label">السنة الدراسية</label>
-        <select class="form-select" id="hl-year" onchange="calcHourlyDeduct()"></select>
+        <select class="form-select" id="hl-year"></select>
       </div>
     </div>
     <div class="form-group">
       <label class="form-label">ملاحظات</label>
       <input class="form-input" id="hl-notes" placeholder="ملاحظات إضافية (اختياري)">
     </div>
-    <div id="hourly-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);font-size:13px;color:#000;margin-bottom:4px;display:none;"></div>
+    <div id="hl-info-box" style="padding:12px 16px;border-radius:10px;background:rgba(20,184,166,0.07);border:1px solid rgba(20,184,166,0.2);font-size:13px;margin-bottom:4px;display:none;"></div>
+
+    <!-- قسم الكتاب الرسمي -->
+    <div class="letter-section">
+      <div class="letter-section-title">📄 الكتاب الرسمي / الوثيقة المرفقة <span style="font-weight:400;font-size:12px;color:#64748b;">(اختياري)</span></div>
+      <div class="form-grid">
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">رقم الكتاب</label>
+          <input class="form-input" id="hl-letter-num" placeholder="مثال: 1234">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="form-label">تاريخ الكتاب</label>
+          <input class="form-input" id="hl-letter-date" type="date">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label class="form-label">عنوان / موضوع الكتاب</label>
+        <input class="form-input" id="hl-letter-title" placeholder="مثال: طلب إجازة زمنية">
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="form-label">ملاحظات الكتاب</label>
+        <input class="form-input" id="hl-letter-notes" placeholder="تفاصيل إضافية (اختياري)">
+      </div>
+    </div>
+
     <div class="modal-footer">
-      <button class="btn" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="saveHourlyLeave()">&#x1F4BE; تسجيل الإجازة الزمنية</button>
+      <button class="btn" style="background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;box-shadow:0 4px 14px rgba(13,148,136,0.3);" onclick="saveHourlyLeave()">💾 تسجيل الإجازة الزمنية</button>
       <button class="btn btn-outline" onclick="closeModal('modal-hourly-leave')">إلغاء</button>
     </div>
   </div>
@@ -1380,8 +1493,8 @@
 <div class="modal-overlay" id="modal-manual-balance">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <div class="modal-title">&#x270F;&#xFE0F; تعديل رصيد الإجازة يدوياً</div>
-      <button class="modal-close" onclick="closeModal('modal-manual-balance')">&#x2715;</button>
+      <div class="modal-title">✏️ تعديل رصيد الإجازة يدوياً</div>
+      <button class="modal-close" onclick="closeModal('modal-manual-balance')">✕</button>
     </div>
     <div class="form-group">
       <label class="form-label">نوع الإجازة</label>
@@ -1496,6 +1609,40 @@
   </div>
 </div>
 
+<!-- WhatsApp Backup Modal (logout/close) -->
+<div class="modal-overlay" id="modal-wa-backup">
+  <div class="modal modal-sm">
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="font-size:44px;margin-bottom:8px;">📱</div>
+      <div style="font-size:17px;font-weight:800;color:#000;margin-bottom:6px;">مشاركة قاعدة البيانات؟</div>
+      <div style="font-size:14px;color:#64748b;line-height:1.6;">هل تريد تنزيل نسخة احتياطية ومشاركتها عبر واتس اب قبل المتابعة؟</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="btn" style="background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;box-shadow:0 4px 14px rgba(37,211,102,0.35);width:100%;justify-content:center;padding:13px;" onclick="confirmWaBackupAndProceed()">
+        📤 تنزيل ومشاركة عبر واتس اب
+      </button>
+      <button class="btn btn-outline" style="width:100%;justify-content:center;padding:12px;" onclick="skipWaBackupAndProceed()">
+        ❌ لا، تخطي
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Official Letters View Modal -->
+<div class="modal-overlay" id="modal-letters">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">📄 الكتاب الرسمي المرفق بالإجازة</div>
+      <button class="modal-close" onclick="closeModal('modal-letters')">✕</button>
+    </div>
+    <div id="letters-modal-content" style="min-height:100px;"></div>
+    <div class="modal-footer">
+      <button id="btn-print-letter" class="btn btn-primary" style="display:none;gap:8px;" onclick="">🖨️ طباعة الكتاب</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-letters')">إغلاق</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm Delete -->
 <div class="modal-overlay" id="modal-confirm">
   <div class="modal modal-sm">
@@ -1519,6 +1666,7 @@ const IDB_VER = 3;
 let db;
 
 function initDB() {
+  if (db) return Promise.resolve(db); // already open, skip
   return new Promise((res, rej) => {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
@@ -1538,8 +1686,13 @@ function initDB() {
       if (!d.objectStoreNames.contains('settings'))
         d.createObjectStore('settings', {keyPath:'key'});
     };
-    req.onsuccess = e => { db = e.target.result; res(db); };
-    req.onerror  = e => rej(e);
+    req.onsuccess = e => {
+      db = e.target.result;
+      db.onversionchange = () => { db.close(); db = null; };
+      res(db);
+    };
+    req.onerror = e => rej(new Error('IDB open error: ' + (e.target?.error?.message || 'unknown')));
+    req.onblocked = () => rej(new Error('IDB blocked: close other tabs and retry'));
   });
 }
 
@@ -1553,24 +1706,21 @@ function dbAll(store) {
 }
 function dbPut(store, obj) {
   return new Promise((res, rej) => {
-    const tx = db.transaction(store,'readwrite');
-    const req = tx.objectStore(store).put(obj);
-    req.onsuccess = () => {
-      // مزامنة Firebase في الخلفية (فقط faculty و leaves)
-      if (store === 'faculty' || store === 'leaves') fbPut(store, obj);
-      res();
-    };
-    req.onerror = () => rej();
+    try {
+      const tx = db.transaction(store,'readwrite');
+      const req = tx.objectStore(store).put(obj);
+      req.onsuccess = () => res();
+      req.onerror = (e) => rej(new Error('IDB put error: ' + (e.target?.error?.message || store)));
+    } catch(e) {
+      rej(e);
+    }
   });
 }
 function dbDelete(store, id) {
   return new Promise((res, rej) => {
     const tx = db.transaction(store,'readwrite');
     const req = tx.objectStore(store).delete(id);
-    req.onsuccess = () => {
-      if (store === 'faculty' || store === 'leaves') fbDelete(store, id);
-      res();
-    };
+    req.onsuccess = () => res();
     req.onerror = () => rej();
   });
 }
@@ -1594,11 +1744,14 @@ function dbSetSetting(key, value) {
 }
 
 // ==================== STATE ====================
+// Hourly leave constants
+const HOURS_PER_DAY_DEDUCT = 7; // كل 7 ساعات تراكمية = يوم اعتيادي
 let faculty = [];
 let leaves = [];
 let currentFacultyId = null;
 let currentLeaveType = 'normal';
 let alertCallback = null;
+let profileYear = '';
 
 const NORMAL_DAYS = 36;       // موظف عادي
 const NORMAL_DAYS_INSTRUCTOR = 15; // تدريسي
@@ -1637,6 +1790,8 @@ async function init() {
   renderDashboard();
   renderFacultyList();
   populateFilters();
+  // load saved WA phone on startup
+  setTimeout(loadWaPhone, 100);
 }
 
 // ==================== AUTH SYSTEM ====================
@@ -1726,11 +1881,27 @@ async function sha256(message) {
 // We need IDB ready before showing the login screen so seedDefaultAccounts works.
 // initDB is called here once; doLogin() calls init() again (which is safe — initDB re-uses existing db).
 (async function boot() {
-  try {
-    await initDB();
-    await seedDefaultAccounts();
-  } catch(e) {
-    console.error('Boot error:', e);
+  let retries = 3;
+  while (retries-- > 0) {
+    try {
+      await initDB();
+      await seedDefaultAccounts();
+      break; // success
+    } catch(e) {
+      console.error('Boot error (attempt left: ' + retries + '):', e);
+      db = null; // reset so next attempt retries
+      if (retries === 0) {
+        // show a soft warning on the login screen
+        try {
+          const warn = document.createElement('div');
+          warn.style.cssText = 'background:#fee2e2;color:#b91c1c;padding:8px 14px;border-radius:8px;font-size:13px;margin-top:8px;text-align:center;';
+          warn.textContent = '⚠️ تعذّر فتح قاعدة البيانات. حاول إغلاق التطبيق وإعادة تشغيله، أو امسح ذاكرة التخزين المؤقت للمتصفح.';
+          document.getElementById('login-error').after(warn);
+        } catch(_) {}
+      } else {
+        await new Promise(r => setTimeout(r, 500)); // wait before retry
+      }
+    }
   }
   try { document.getElementById('login-user').focus(); } catch(e){}
 })();
@@ -1745,9 +1916,9 @@ function showPage(name) {
   if (name === 'leaves') renderLeavesLog();
   if (name === 'statistics') renderStats();
   if (name === 'dashboard') renderDashboard();
-  if (name === 'database') renderDbInfo();
+  if (name === 'database') { renderDbInfo(); loadWaPhone(); }
 }
-const pageNames = { dashboard:'الرئيسية', faculty:'الموظف', profile:'', leaves:'سجل', statistics:'الإحصائيات', database:'قاعدة' };
+const pageNames = { dashboard:'الرئيسية', faculty:'الموظف', profile:'', 'add-faculty':'', leaves:'سجل', statistics:'الإحصائيات', database:'قاعدة' };
 
 // ==================== DASHBOARD ====================
 function renderDashboard() {
@@ -1778,7 +1949,7 @@ function renderDashboard() {
       <td>${leaveTypeBadge(l.type)}</td>
       <td>${l.fromDate}</td>
       <td>${l.toDate}</td>
-      <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
+      <td><strong>${l.days}</strong></td>
       <td>${l.year}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة بعد</p></div></td></tr>`;
@@ -1803,7 +1974,9 @@ function leaveTypeBadge(t) {
     'maternity-cut':'<span class="badge badge-gray" style="background:rgba(100,116,139,0.12);color:#475569;">✂️ قطع إجازة أمومة</span>',
     'manual-sick-add':'<span class="badge badge-gray" style="background:rgba(16,185,129,0.1);color:#059669;">➕ إضافة مرضية (يدوي)</span>',
     'manual-sick-sub':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.1);color:#dc2626;">➖ خصم مرضية (يدوي)</span>',
-    'hourly':         '<span class="badge badge-orange">⏱️ إجازة زمنية</span>',
+    'hourly':       '<span class="badge badge-teal">⏰ إجازة زمنية</span>',
+    'hourly-deduct':'<span class="badge badge-teal" style="background:rgba(245,158,11,0.1);color:#d97706;">⏱️ استقطاع زمني→اعتيادي</span>',
+    'sick-cum-deduct':'<span class="badge badge-gray" style="background:rgba(239,68,68,0.08);color:#dc2626;">🏥 مرضي تراكمي</span>',
   };
   return map[t] || `<span class="badge badge-gray">${t}</span>`;
 }
@@ -1811,24 +1984,39 @@ function leaveTypeBadge(t) {
 // ==================== BALANCES ====================
 function getBalance(facultyId, year) {
   const fac = faculty.find(f=>f.id===facultyId);
-  if (!fac) return {normal:0, sick:0, normalUsed:0, sickUsed:0, normalDays:NORMAL_DAYS};
-  const nd = getNormalDays(facultyId);
+  if (!fac) return {normal:0, sick:0, normalUsed:0, sickUsed:0, normalDays:NORMAL_DAYS, sickCumBalance:0, hourlyAccumulated:0};
+  // منسب: لا رصيد
+  if (fac.status === 'seconded') {
+    return {normal:0, sick:0, normalUsed:0, sickUsed:0, normalDays:0, sickCumBalance:0, hourlyAccumulated:0};
+  }
   const fl = leaves.filter(l=>l.facultyId===facultyId && l.year===year);
+  const allLeaves = leaves.filter(l=>l.facultyId===facultyId);
 
   // اعتيادية
   const normalUsed    = fl.filter(l=>l.type==='normal').reduce((s,l)=>s+l.days,0);
   const normalRefund  = fl.filter(l=>l.type==='normal-refund').reduce((s,l)=>s+l.days,0);
   const exceptionAdd  = fl.filter(l=>l.type==='exception').reduce((s,l)=>s+l.days,0);
-  // تتبع الساعات الزمنية فقط للعرض (الاستقطاع يتم عبر سجلات normal تلقائياً في saveHourlyLeave)
-  const hourlyUsedHours = fl.filter(l=>l.type==='hourly').reduce((s,l)=>s+(l.hours||0),0);
-  const hourlyDeductDays = Math.floor(hourlyUsedHours / 7);
+  // استقطاع زمني من الاعتيادي (يُحتسب في كل السنوات)
+  const hourlyDeductAll = allLeaves.filter(l=>l.type==='hourly-deduct').reduce((s,l)=>s+l.days,0);
   // مرضية
   const sickUsed      = fl.filter(l=>l.type==='sick'||l.type==='half').reduce((s,l)=>s+l.days,0);
   const sickManualAdd = fl.filter(l=>l.type==='manual-sick-add').reduce((s,l)=>s+l.days,0);
   const sickManualSub = fl.filter(l=>l.type==='manual-sick-sub').reduce((s,l)=>s+l.days,0);
+  // مرضي تراكمي
+  const sickCumInitial = fac.initialSickCumulative || 0;
+  const sickCumUsed    = allLeaves.filter(l=>l.type==='sick-cum-deduct').reduce((s,l)=>s+l.days,0);
+  const sickCumBalance = Math.max(0, sickCumInitial - sickCumUsed);
 
-  const normalBalance = nd + exceptionAdd - normalUsed + normalRefund;
+  // الموظف المُحوَّل من منسب→مستمر: رصيده الاعتيادي الأساسي = 0
+  // أيامه تأتي فقط من سجل الاستثناء (exceptionAdd) وليس من nd الثابت (36/15)
+  const isActivated = !!fac.activationDate; // سبق أن كان منسباً
+  const nd = isActivated ? 0 : getNormalDays(facultyId);
+
+  const normalBalance = nd + exceptionAdd - normalUsed + normalRefund - hourlyDeductAll;
   const sickBalance   = SICK_DAYS + sickManualAdd - sickManualSub - sickUsed;
+
+  // الساعات الزمنية المتراكمة
+  const totalHours = allLeaves.filter(l=>l.type==='hourly').reduce((s,l)=>s+(l.hours||0),0);
 
   return {
     normal:     normalBalance,
@@ -1836,15 +2024,16 @@ function getBalance(facultyId, year) {
     normalUsed: Math.max(0, normalUsed - normalRefund),
     sickUsed,
     normalDays: nd + exceptionAdd,
-    hourlyUsedHours,
-    hourlyDeductDays,
-    hourlyRemainder: hourlyUsedHours % 7,
+    sickCumBalance,
+    hourlyAccumulated: totalHours,
+    totalHoursAllTime: totalHours,
   };
 }
 
 function getCumBalance(facultyId) {
   const fac = faculty.find(f=>f.id===facultyId);
   if (!fac) return 0;
+  if (fac.status === 'seconded') return 0;
   const cumUsed = leaves.filter(l=>l.facultyId===facultyId && l.type==='cumulative').reduce((s,l)=>s+l.days,0);
   const cumAdded = leaves.filter(l=>l.facultyId===facultyId && l.type==='cum-add').reduce((s,l)=>s+l.days,0);
   return (fac.initialCumulative || 0) + cumAdded - cumUsed;
@@ -1879,7 +2068,7 @@ function renderFacultyList() {
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
           <div class="avatar">${f.name.charAt(0)}</div>
           <div>
-            <div style="font-size:16px;font-weight:800;color:#000">${f.name} ${f.gender==='female'?'<span style="font-size:13px;">👩</span>':f.gender==='male'?'<span style="font-size:13px;">👨</span>':''} ${f.type==='instructor'?'<span style="font-size:11px;background:rgba(8,145,178,0.12);color:#0891b2;padding:2px 7px;border-radius:8px;">🎓</span>':''}</div>
+            <div style="font-size:16px;font-weight:800;color:#000">${f.name} ${f.gender==='female'?'<span style="font-size:13px;">👩</span>':f.gender==='male'?'<span style="font-size:13px;">👨</span>':''} ${f.type==='instructor'?'<span style="font-size:11px;background:rgba(8,145,178,0.12);color:#0891b2;padding:2px 7px;border-radius:8px;">🎓</span>':''} ${f.status==='seconded'?'<span style="font-size:11px;background:rgba(245,158,11,0.15);color:#92400e;padding:2px 7px;border-radius:8px;">🔄 منسب</span>':''}</div>
             <div style="font-size:15px;color:#000;margin-top:2px;">${f.dept||'—'} ${f.rank?'• '+f.rank:''}</div>
           </div>
         </div>
@@ -1917,6 +2106,13 @@ function openProfile(id) {
   if (!fac) return;
   document.getElementById('profile-name-header').textContent = fac.name;
   document.getElementById('profile-dept-header').textContent = (fac.dept||'') + (fac.rank?' • '+fac.rank:'') + (fac.empNo?' • رقم التوظيف: '+fac.empNo:'');
+
+  // تهيئة فلتر السنة
+  const years = getYearsList();
+  const yfSelect = document.getElementById('profile-year-filter');
+  yfSelect.innerHTML = '<option value="">كل السنين</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  yfSelect.value = profileYear;
+
   renderProfile(id);
   showPage('profile');
 }
@@ -1925,9 +2121,13 @@ function renderProfile(id) {
   const fac = faculty.find(f=>f.id===id);
   if (!fac) return;
   const cy = currentYear();
-  const bal = getBalance(id, cy);
+  const selectedYear = profileYear || cy;
+  const bal = getBalance(id, selectedYear);
   const cum = getCumBalance(id);
-  const fLeaves = leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
+  // sickCumBalance مُدرج داخل bal مباشرة من getBalance()
+  const fLeaves = profileYear
+    ? leaves.filter(l=>l.facultyId===id && l.year===profileYear).sort((a,b)=>b.id-a.id)
+    : leaves.filter(l=>l.facultyId===id).sort((a,b)=>b.id-a.id);
   const pctN = Math.min(100,Math.round(bal.normalUsed/NORMAL_DAYS*100));
   const pctS = Math.min(100,Math.round(bal.sickUsed/SICK_DAYS*100));
   const isFemale = fac.gender === 'female';
@@ -1935,6 +2135,9 @@ function renderProfile(id) {
   const normalDaysTotal = getNormalDays(id);
   const genderBadge = fac.gender ? `<span class="badge ${isFemale?'badge-red':'badge-blue'}" style="margin-top:4px;">${isFemale?'👩 أنثى':'👨 ذكر'}</span>` : '';
   const typeBadge = isInstructor ? `<span class="badge" style="background:rgba(8,145,178,0.12);color:#0891b2;margin-top:4px;">🎓 تدريسي</span>` : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;margin-top:4px;">👨‍💼 موظف</span>`;
+  const yearBadge = profileYear
+    ? `<span class="badge badge-blue">📅 السنة: ${selectedYear}</span>`
+    : `<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;">📅 كل السنين | رصيد: ${cy}</span>`;
 
   // Active extended leaves
   const extTypes = ['long','fiveyear','prebirth','postbirth','maternity','maternity-ext'];
@@ -1968,7 +2171,7 @@ function renderProfile(id) {
         <div class="profile-name">${fac.name}</div>
         <div class="profile-dep">${fac.dept||'—'} ${fac.rank?'• '+fac.rank:''} ${fac.hireYear?'• منذ '+fac.hireYear:''}</div>
         <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
-          <span class="badge badge-blue">📅 السنة: ${cy}</span>
+          ${yearBadge}
           ${fac.empNo?`<span class="badge badge-gray">🆔 ${fac.empNo}</span>`:''}
           ${genderBadge}
           ${typeBadge}
@@ -1986,7 +2189,7 @@ function renderProfile(id) {
       <div class="leave-block">
         <div class="leave-block-title">📅 الإجازة الاعتيادية</div>
         <div class="leave-block-val" style="color:var(--accent);">${bal.normal} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
-        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم${bal.hourlyUsedHours > 0 ? ` | ⏱️ ساعات زمنية: ${bal.hourlyUsedHours} ساعة (${bal.hourlyDeductDays} يوم + ${bal.hourlyRemainder} ساعة)` : ''}</div>
+        <div class="leave-block-sub">مستخدم: ${bal.normalUsed} من ${normalDaysTotal} يوم</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-blue" style="width:${pctN}%"></div></div>
       </div>
       <div class="leave-block">
@@ -1994,6 +2197,12 @@ function renderProfile(id) {
         <div class="leave-block-val" style="color:var(--red);">${bal.sick} <span style="font-size:15px;font-weight:500;">يوم متبقي</span></div>
         <div class="leave-block-sub">مستخدم: ${bal.sickUsed} من ${SICK_DAYS} يوم</div>
         <div class="progress-bar-wrap"><div class="progress-bar pb-red" style="width:${pctS}%"></div></div>
+      </div>
+      <div class="leave-block" style="background:linear-gradient(135deg,rgba(220,38,38,0.07),rgba(185,28,28,0.04));border:1px solid rgba(220,38,38,0.22);">
+        <div class="leave-block-title" style="color:#b91c1c;">🏥 المرضية التراكمية</div>
+        <div class="leave-block-val" style="color:#dc2626;">${bal.sickCumBalance} <span style="font-size:15px;font-weight:500;">يوم</span></div>
+        <div class="leave-block-sub">الرصيد المرضي المتراكم من السنوات السابقة</div>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="background:linear-gradient(90deg,#dc2626,#b91c1c);width:${Math.min(100, bal.sickCumBalance > 0 ? Math.min(100, bal.sickCumBalance) : 0)}%"></div></div>
       </div>
       <div class="leave-block" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(249,115,22,0.05));border:1px dashed rgba(245,158,11,0.4);">
         <div class="leave-block-title">⚡ إغلاق السنة</div>
@@ -2008,27 +2217,47 @@ function renderProfile(id) {
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>#</th><th>نوع الإجازة</th><th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th><th>حذف</th>
+            <th>#</th><th>نوع الإجازة</th><th>من</th><th>إلى</th><th>الأيام</th><th>السنة</th><th>ملاحظات</th><th>📄 كتاب</th><th>حذف</th>
           </tr></thead>
           <tbody>
             ${fLeaves.filter(l=>l.type!=='normal-refund').length ? fLeaves.filter(l=>l.type!=='normal-refund').map((l,i)=>`
               <tr class="${l.type==='half'?'half-salary-row':''}" ${l.cutDate?'style="opacity:0.7;"':''}>
                 <td>${i+1}</td>
                 <td>${leaveTypeBadge(l.type)}${l.cutDate?` <span style="font-size:11px;color:#64748b;">(مقطوعة ${l.cutDate})</span>`:''}</td>
-                <td>${l.fromDate}</td>
+                <td>${l.fromDate}${l.startTime?' '+l.startTime:''}</td>
                 <td>${l.toDate}</td>
-                <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
+                <td><strong>${l.type==='hourly'?(l.hours||0)+' ساعة':l.days+' يوم'}</strong></td>
                 <td>${l.year}</td>
-                <td>${l.type==='hourly' && l.startTime ? `🕐 ${l.startTime} — ` : ''}${l.notes||'—'}</td>
+                <td>${l.notes||'—'}</td>
+                <td>${letterTagHTML(l)}</td>
                 <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
               </tr>`).join('') :
-              `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة لهذا الموظف</p></div></td></tr>`
+              `<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">📭</div><p>لا توجد إجازات مسجلة لهذا الموظف</p></div></td></tr>`
             }
           </tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+function cancelAddFaculty() {
+  showPage(_prevPageBeforeAddFaculty || 'faculty');
+  if (_prevPageBeforeAddFaculty === 'profile' && currentFacultyId) {
+    renderProfile(currentFacultyId);
+  }
+}
+
+function checkDuplicateName() {
+  const name = (document.getElementById('f-name')?.value || '').trim();
+  const warn = document.getElementById('f-name-dup-warn');
+  if (!warn) return;
+  if (!name) { warn.style.display = 'none'; return; }
+  const dup = faculty.find(f =>
+    f.name.trim().toLowerCase() === name.toLowerCase() &&
+    f.id !== (editingFacultyId || '')
+  );
+  warn.style.display = dup ? 'block' : 'none';
 }
 
 // ==================== YEAR CLOSE ====================
@@ -2048,80 +2277,185 @@ async function closeYearBalance(id) {
 
 // ==================== ADD FACULTY ====================
 let editingFacultyId = null;
+let _prevPageBeforeAddFaculty = 'faculty'; // للرجوع بعد الإلغاء/الحفظ
+
 function openAddFaculty(type) {
   editingFacultyId = null;
+  _prevPageBeforeAddFaculty = document.querySelector('.page.active')?.id?.replace('page-','') || 'faculty';
   const isInstructor = type === 'instructor';
-  document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 إضافة تدريسي جديد' : '👨‍💼 إضافة موظف جديد';
-  ['f-name','f-dept','f-empno','f-hire','f-rank'].forEach(id => document.getElementById(id).value='');
-  document.getElementById('f-cumulative').value='0';
-  document.getElementById('f-gender').value='';
+
+  // عنوان الصفحة
+  document.getElementById('faculty-page-title').textContent = isInstructor ? '🎓 إضافة تدريسي جديد' : '👨‍💼 إضافة موظف جديد';
+  document.getElementById('faculty-page-subtitle').textContent = isInstructor ? 'أدخل بيانات التدريسي أدناه' : 'أدخل بيانات الموظف أدناه';
+
+  // تفريغ الحقول
+  ['f-name','f-dept','f-empno','f-hire','f-rank'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('f-cumulative').value = '0';
+  document.getElementById('f-sick-cumulative').value = '0';
+  document.getElementById('f-gender').value = '';
   document.getElementById('f-type').value = type || 'employee';
-  const badge = document.getElementById('f-type-badge');
-  badge.style.display='block';
-  if (isInstructor) {
-    badge.style.background='rgba(8,145,178,0.1)'; badge.style.color='#0891b2'; badge.style.border='1px solid rgba(8,145,178,0.2)';
-    badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
-  } else {
-    badge.style.background='rgba(99,102,241,0.08)'; badge.style.color='#6366f1'; badge.style.border='1px solid rgba(99,102,241,0.18)';
-    badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
+
+  // إعادة ضبط الحالة
+  const statusEl = document.getElementById('f-status');
+  if (statusEl) {
+    statusEl.value = 'active';
+    Array.from(statusEl.options).forEach(opt => { opt.disabled = false; });
   }
-  openModal('modal-faculty');
+  document.getElementById('f-status-info').style.display = 'none';
+  document.getElementById('f-activation-block').style.display = 'none';
+  document.getElementById('f-name-dup-warn').style.display = 'none';
+
+  // badge النوع
+  const badge = document.getElementById('f-type-badge');
+  badge.style.display = 'block';
+  if (isInstructor) {
+    badge.style.cssText += ';background:rgba(8,145,178,0.1);color:#0891b2;border:1px solid rgba(8,145,178,0.2);';
+    badge.textContent = '🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
+  } else {
+    badge.style.cssText += ';background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.18);';
+    badge.textContent = '👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
+  }
+
+  showPage('add-faculty');
+  // focus على حقل الاسم
+  setTimeout(() => { try { document.getElementById('f-name').focus(); } catch(_) {} }, 150);
 }
 function openEditFaculty() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
   if (!fac) return;
   editingFacultyId = fac.id;
+  _prevPageBeforeAddFaculty = 'profile';
   const isInstructor = fac.type === 'instructor';
-  document.getElementById('faculty-modal-title').textContent = isInstructor ? '🎓 تعديل بيانات التدريسي' : '👨‍💼 تعديل بيانات الموظف';
+
+  // عنوان الصفحة
+  document.getElementById('faculty-page-title').textContent = isInstructor ? '🎓 تعديل بيانات التدريسي' : '👨‍💼 تعديل بيانات الموظف';
+  document.getElementById('faculty-page-subtitle').textContent = fac.name || '';
+
+  // تعبئة الحقول
   document.getElementById('f-name').value = fac.name||'';
   document.getElementById('f-dept').value = fac.dept||'';
   document.getElementById('f-empno').value = fac.empNo||'';
   document.getElementById('f-hire').value = fac.hireYear||'';
   document.getElementById('f-rank').value = fac.rank||'';
   document.getElementById('f-cumulative').value = fac.initialCumulative||0;
+  document.getElementById('f-sick-cumulative').value = fac.initialSickCumulative||0;
   document.getElementById('f-gender').value = fac.gender||'';
   document.getElementById('f-type').value = fac.type||'employee';
-  const badge = document.getElementById('f-type-badge');
-  badge.style.display='block';
-  if (isInstructor) {
-    badge.style.background='rgba(8,145,178,0.1)'; badge.style.color='#0891b2'; badge.style.border='1px solid rgba(8,145,178,0.2)';
-    badge.textContent='🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
-  } else {
-    badge.style.background='rgba(99,102,241,0.08)'; badge.style.color='#6366f1'; badge.style.border='1px solid rgba(99,102,241,0.18)';
-    badge.textContent='👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
+  document.getElementById('f-name-dup-warn').style.display = 'none';
+
+  // الحالة
+  const statusEl = document.getElementById('f-status');
+  if (statusEl) {
+    statusEl.value = fac.status||'active';
+    // إذا كان مستمراً: لا يجوز تحويله لمنسب
+    Array.from(statusEl.options).forEach(opt => {
+      opt.disabled = (fac.status !== 'seconded' && opt.value === 'seconded');
+    });
   }
-  openModal('modal-faculty');
+  document.getElementById('f-status-info').style.display = (fac.status==='seconded') ? 'block' : 'none';
+  document.getElementById('f-activation-block').style.display = 'none';
+
+  // badge النوع
+  const badge = document.getElementById('f-type-badge');
+  badge.style.display = 'block';
+  if (isInstructor) {
+    badge.style.cssText += ';background:rgba(8,145,178,0.1);color:#0891b2;border:1px solid rgba(8,145,178,0.2);';
+    badge.textContent = '🎓 تدريسي — الإجازة الاعتيادية: 15 يوم | المرضية: 30 يوم';
+  } else {
+    badge.style.cssText += ';background:rgba(99,102,241,0.08);color:#6366f1;border:1px solid rgba(99,102,241,0.18);';
+    badge.textContent = '👨‍💼 موظف — الإجازة الاعتيادية: 36 يوم | المرضية: 30 يوم';
+  }
+
+  showPage('add-faculty');
 }
 async function saveFaculty() {
-  const wasEditing = !!editingFacultyId;
-  const name = document.getElementById('f-name').value.trim();
-  const dept = document.getElementById('f-dept').value.trim();
-  const gender = document.getElementById('f-gender').value;
-  const type = document.getElementById('f-type').value || 'employee';
-  if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
-  if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
-  const obj = {
-    id: editingFacultyId || Date.now().toString(),
-    name, dept, gender, type,
-    empNo: document.getElementById('f-empno').value.trim(),
-    rank: document.getElementById('f-rank').value.trim(),
-    hireYear: document.getElementById('f-hire').value,
-    initialCumulative: parseInt(document.getElementById('f-cumulative').value)||0,
-  };
-  await dbPut('faculty', obj);
-  faculty = await dbAll('faculty');
-  closeModal('modal-faculty');
-  renderFacultyList();
-  populateFilters();
-  renderDashboard();
-  const typeLabel = type==='instructor'?'التدريسي':'الموظف';
-  showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
-  if (wasEditing && currentFacultyId === editingFacultyId) {
-    document.getElementById('profile-name-header').textContent = obj.name;
-    renderProfile(obj.id);
+  try {
+    const wasEditing = !!editingFacultyId;
+    const name = document.getElementById('f-name').value.trim();
+    const dept = document.getElementById('f-dept').value.trim();
+    const gender = document.getElementById('f-gender').value;
+    const type = document.getElementById('f-type').value || 'employee';
+    if (!name) { showToast('⚠️ الرجاء إدخال الاسم', 'red'); return; }
+    // التحقق من تكرار الاسم (عند الإضافة أو التعديل لموظف مختلف)
+    const duplicateName = faculty.find(f =>
+      f.name.trim().toLowerCase() === name.toLowerCase() &&
+      f.id !== (editingFacultyId || '')
+    );
+    if (duplicateName) {
+      showToast(`⚠️ الاسم "${name}" موجود مسبقاً في النظام`, 'red');
+      document.getElementById('f-name').style.borderColor = 'var(--red)';
+      document.getElementById('f-name').style.boxShadow = '0 0 0 3px rgba(239,68,68,0.15)';
+      setTimeout(() => {
+        document.getElementById('f-name').style.borderColor = '';
+        document.getElementById('f-name').style.boxShadow = '';
+      }, 3000);
+      return;
+    }
+    if (!gender) { showToast('⚠️ الرجاء تحديد الجنس (ذكر / أنثى)', 'red'); return; }
+    if (!db) {
+      try { await initDB(); } catch(e){}
+      if (!db) { showToast('⚠️ فشل الاتصال بقاعدة البيانات، أعد تحميل الصفحة', 'red'); return; }
+    }
+    const status = document.getElementById('f-status')?.value || 'active';
+    const wasSecondedBefore = editingFacultyId ? (faculty.find(f=>f.id===editingFacultyId)?.status === 'seconded') : false;
+    const isNowActive = status === 'active';
+    // إذا تحول من منسب إلى مستمر: تاريخ اليوم هو تاريخ مباشرته
+    let hireYear = document.getElementById('f-hire').value;
+    let proRatedDays = 0;
+    if (wasSecondedBefore && isNowActive) {
+      const today = new Date();
+      hireYear = today.getFullYear().toString();
+      // القاعدة: كل 10 أيام متبقية من السنة = يوم إجازة اعتيادية واحد
+      const endOfYear = new Date(today.getFullYear(), 11, 31); // 31 ديسمبر
+      const daysLeftInYear = Math.floor((endOfYear - today) / 86400000) + 1;
+      proRatedDays = Math.floor(daysLeftInYear / 10);
+    }
+    const obj = {
+      id: editingFacultyId || Date.now().toString(),
+      name, dept, gender, type, status,
+      empNo: document.getElementById('f-empno').value.trim(),
+      rank: document.getElementById('f-rank').value.trim(),
+      hireYear: hireYear,
+      initialCumulative: status === 'seconded' ? 0 : (parseInt(document.getElementById('f-cumulative').value)||0),
+      initialSickCumulative: status === 'seconded' ? 0 : (parseInt(document.getElementById('f-sick-cumulative')?.value)||0),
+      activationDate: (wasSecondedBefore && isNowActive) ? new Date().toISOString().split('T')[0] : undefined,
+      proRatedNormalDays: (wasSecondedBefore && isNowActive) ? proRatedDays : undefined,
+    };
+    await dbPut('faculty', obj);
+    // إذا تحول من منسب إلى مستمر: اقرأ الرصيد التراكمي من بلوك التفعيل
+    if (wasSecondedBefore && isNowActive) {
+      const activationCum = parseInt(document.getElementById('f-activation-cum')?.value)||0;
+      const activationSickCum = parseInt(document.getElementById('f-activation-sick-cum')?.value)||0;
+      obj.initialCumulative = activationCum;
+      obj.initialSickCumulative = activationSickCum;
+      await dbPut('faculty', obj); // تحديث بالقيم الصحيحة
+      const cy = currentYear();
+      const today2 = new Date().toISOString().split('T')[0];
+      if (proRatedDays > 0) {
+        await addLeaveRecord({
+          facultyId: obj.id, type: 'exception',
+          days: proRatedDays, fromDate: today2, toDate: today2, year: cy,
+          notes: `إجازات اعتيادية نسبية عند تحويل الموظف من منسب إلى مستمر (${proRatedDays} يوم)`,
+        });
+      }
+    }
+    faculty = await dbAll('faculty');
+    showPage(_prevPageBeforeAddFaculty || 'faculty');
+    renderFacultyList();
+    populateFilters();
+    renderDashboard();
+    const typeLabel = type==='instructor'?'التدريسي':'الموظف';
+    showToast(wasEditing ? `✅ تم تحديث بيانات ${typeLabel}` : `✅ تم إضافة ${typeLabel} بنجاح`, 'green');
+    if (wasEditing && currentFacultyId === editingFacultyId) {
+      document.getElementById('profile-name-header').textContent = obj.name;
+      renderProfile(obj.id);
+    }
+    const genderLabel = gender==='female'?'أنثى':'ذكر';
+    await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
+  } catch(err) {
+    console.error('saveFaculty error:', err);
+    showToast('❌ حدث خطأ أثناء الحفظ: ' + (err?.message || err), 'red');
   }
-  const genderLabel = gender==='female'?'أنثى':'ذكر';
-  await logActivity(wasEditing ? `✏️ تعديل بيانات ${type==='instructor'?'تدريسي':'موظف'}: ${name}` : `➕ إضافة ${type==='instructor'?'تدريسي':'موظف'} جديد: ${name} (${genderLabel})`, wasEditing ? 'orange' : 'green');
 }
 function confirmDeleteFaculty() {
   const fac = faculty.find(f=>f.id===currentFacultyId);
@@ -2150,6 +2484,8 @@ function openAddLeave(type) {
   document.getElementById('l-to').value = '';
   document.getElementById('l-notes').value = '';
   document.getElementById('leave-info-box').style.display='none';
+  // مسح حقول الكتاب
+  ['l-letter-num','l-letter-date','l-letter-title','l-letter-notes'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
 
   const ySelect = document.getElementById('l-year');
   const years = getYearsList();
@@ -2201,6 +2537,9 @@ async function saveLeave() {
 
   if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
 
+  // جمع بيانات الكتاب الرسمي
+  const letterData = buildLetterData('l');
+
   const bal = getBalance(currentFacultyId, year);
   const cum = getCumBalance(currentFacultyId);
   const endDate = document.getElementById('l-to').value;
@@ -2210,7 +2549,7 @@ async function saveLeave() {
       showAlert('⚠️', 'انتهى الرصيد الاعتيادي', `هذا الموظف لا يمتلك رصيداً اعتيادياً لسنة ${year}.\nهل تريد قطع ${days} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async (yes) => {
         if (!yes) return;
         if (days > cum) { showToast('❌ الرصيد التراكمي غير كافٍ', 'red'); return; }
-        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days, fromDate:from, toDate:endDate, year, notes});
+        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days, fromDate:from, toDate:endDate, year, notes, ...letterData});
         afterSaveLeave();
       });
       return;
@@ -2220,38 +2559,68 @@ async function saveLeave() {
       showAlert('⚠️', 'الرصيد الاعتيادي غير كافٍ', `يمتلك هذا الموظف ${bal.normal} يوم اعتيادي متبقٍ.\nهل تريد قطع ${overflow} يوم من الرصيد التراكمي (${cum} يوم متاح)؟`, async (yes) => {
         if (!yes) return;
         if (overflow > cum) { showToast('❌ الرصيد التراكمي غير كافٍ لتغطية الفرق', 'red'); return; }
-        await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days:bal.normal, fromDate:from, toDate:endDate, year, notes});
-        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days:overflow, fromDate:from, toDate:endDate, year, notes:'امتداد من التراكمي'});
+        await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days:bal.normal, fromDate:from, toDate:endDate, year, notes, ...letterData});
+        await addLeaveRecord({facultyId:currentFacultyId, type:'cumulative', days:overflow, fromDate:from, toDate:endDate, year, notes:'امتداد من التراكمي', ...letterData});
         afterSaveLeave();
       });
       return;
     }
-    await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days, fromDate:from, toDate:endDate, year, notes});
+    await addLeaveRecord({facultyId:currentFacultyId, type:'normal', days, fromDate:from, toDate:endDate, year, notes, ...letterData});
     afterSaveLeave();
 
   } else {
-    if (bal.sick <= 0) {
-      showAlert('🏥', 'انتهى الرصيد المرضي', `هذا الموظف استنفد رصيده المرضي لسنة ${year}.\nهل تريد تفعيل الإجازة بنصف الراتب؟`, async (yes) => {
-        if (!yes) return;
-        await addLeaveRecord({facultyId:currentFacultyId, type:'half', days, fromDate:from, toDate:endDate, year, notes: `إجازة مرضية بنصف الراتب - ${notes||''}`});
-        showToast('⚠️ تم تسجيل الإجازة المرضية بنصف الراتب', 'orange');
-        afterSaveLeave(false);
-      });
+    // ============================================================
+    // منطق الإجازة المرضية الصحيح (بالترتيب):
+    // ١) من الرصيد المرضي الاعتيادي أولاً
+    // ٢) ثم من الرصيد المرضي التراكمي
+    // ٣) ما تبقى بعد نفاد الاثنين → نصف راتب
+    // ============================================================
+    const sickAvail = Math.max(0, bal.sick);
+    const cumAvail  = Math.max(0, bal.sickCumBalance);
+
+    // الرصيد الاعتيادي كافٍ ← خصم مباشر بدون سؤال
+    if (days <= sickAvail) {
+      await addLeaveRecord({facultyId:currentFacultyId, type:'sick', days, fromDate:from, toDate:endDate, year, notes, ...letterData});
+      afterSaveLeave();
       return;
     }
-    if (days > bal.sick) {
-      const overflow = days - bal.sick;
-      showAlert('🏥', 'الرصيد المرضي غير كافٍ', `يمتلك ${bal.sick} يوم مرضي متبقٍ.\nهل تريد تسجيل ${overflow} يوم بنصف الراتب؟`, async (yes) => {
-        if (!yes) return;
-        await addLeaveRecord({facultyId:currentFacultyId, type:'sick', days:bal.sick, fromDate:from, toDate:endDate, year, notes});
-        await addLeaveRecord({facultyId:currentFacultyId, type:'half', days:overflow, fromDate:from, toDate:endDate, year, notes:'نصف راتب - امتداد مرضي'});
-        showToast('⚠️ تم تسجيل جزء بنصف الراتب', 'orange');
-        afterSaveLeave(false);
-      });
-      return;
-    }
-    await addLeaveRecord({facultyId:currentFacultyId, type:'sick', days, fromDate:from, toDate:endDate, year, notes});
-    afterSaveLeave();
+
+    // توزيع الأيام على المصادر
+    const fromNormal = sickAvail;
+    const remaining  = days - fromNormal;
+    const fromCum    = Math.min(remaining, cumAvail);
+    const fromHalf   = remaining - fromCum;
+
+    // رسالة توضيحية
+    let msgLines = [];
+    if (fromNormal > 0) msgLines.push(`• ${fromNormal} يوم من الرصيد المرضي الاعتيادي (المتبقي: ${sickAvail})`);
+    if (fromCum    > 0) msgLines.push(`• ${fromCum} يوم من الرصيد المرضي التراكمي (المتبقي: ${cumAvail})`);
+    if (fromHalf   > 0) msgLines.push(`• ${fromHalf} يوم بنصف الراتب`);
+    const alertTitle = fromHalf > 0 ? 'الرصيد المرضي غير كافٍ' : 'سيُستقطع من أكثر من مصدر';
+    const alertMsg   = 'سيتم توزيع الإجازة كالتالي:\n' + msgLines.join('\n');
+
+    showAlert('🏥', alertTitle, alertMsg, async (yes) => {
+      if (!yes) return;
+      if (fromNormal > 0) {
+        await addLeaveRecord({facultyId:currentFacultyId, type:'sick',
+          days:fromNormal, fromDate:from, toDate:endDate, year, notes, ...letterData});
+      }
+      if (fromCum > 0) {
+        await addLeaveRecord({facultyId:currentFacultyId, type:'sick-cum-deduct',
+          days:fromCum, fromDate:from, toDate:endDate, year,
+          notes:`استقطاع من الرصيد المرضي التراكمي${notes?' - '+notes:''}`, ...letterData});
+      }
+      if (fromHalf > 0) {
+        await addLeaveRecord({facultyId:currentFacultyId, type:'half',
+          days:fromHalf, fromDate:from, toDate:endDate, year,
+          notes:`إجازة مرضية بنصف الراتب${notes?' - '+notes:''}`, ...letterData});
+        showToast('⚠️ جزء من الإجازة سيكون بنصف الراتب', 'orange');
+      } else {
+        showToast('✅ تم الاستقطاع من الرصيد المرضي', 'green');
+      }
+      afterSaveLeave(false);
+    });
+    return;
   }
 }
 
@@ -2265,6 +2634,227 @@ async function afterSaveLeave(showSuccessToast=true) {
   const typeName = typeMap[currentLeaveType] || currentLeaveType;
   const fac = faculty.find(f => f.id === currentFacultyId);
   await logActivity(`📅 تسجيل إجازة ${typeName} - ${fac?.name||''}`, 'blue');
+}
+
+// ==================== OFFICIAL LETTERS ====================
+function buildLetterData(prefix) {
+  const num   = (document.getElementById(prefix+'-letter-num')?.value||'').trim();
+  const date  = (document.getElementById(prefix+'-letter-date')?.value||'').trim();
+  const title = (document.getElementById(prefix+'-letter-title')?.value||'').trim();
+  const lnotes= (document.getElementById(prefix+'-letter-notes')?.value||'').trim();
+  if (!num && !date && !title && !lnotes) return {};
+  return { officialLetter: { num, date, title, notes: lnotes, addedAt: new Date().toISOString().split('T')[0] } };
+}
+
+function viewLeaveLetters(leaveId) {
+  const lv = leaves.find(l => l.id === leaveId);
+  if (!lv) return;
+  const letter = lv.officialLetter;
+  const typeMap = {normal:'اعتيادية', sick:'مرضية', cumulative:'تراكمية', half:'نصف راتب', long:'طويلة', fiveyear:'5 سنوات', prebirth:'قبل الوضع', postbirth:'بعد الوضع', maternity:'أمومة', 'maternity-ext':'تمديد أمومة', study:'دراسية', exception:'استثناء', hourly:'زمنية'};
+  const typeName = typeMap[lv.type] || lv.type;
+  const fac = faculty.find(f => f.id === lv.facultyId);
+  const content = document.getElementById('letters-modal-content');
+
+  if (!letter || (!letter.num && !letter.date && !letter.title && !letter.notes)) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>لا يوجد كتاب رسمي مرفق بهذه الإجازة</p></div>`;
+    // أخفِ زر الطباعة
+    document.getElementById('btn-print-letter').style.display = 'none';
+  } else {
+    content.innerHTML = `
+      <div style="background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);border-radius:12px;padding:20px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(99,102,241,0.12);">
+          <span style="font-size:28px;">📄</span>
+          <div>
+            <div style="font-size:15px;font-weight:800;color:#1e293b;">كتاب رسمي مرفق</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px;">إجازة ${typeName} | ${lv.fromDate} ← ${lv.toDate} | ${lv.type==='hourly'?(lv.hours||0)+' ساعة':lv.days+' يوم'}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          ${letter.num ? `<div style="background:#fff;border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:12px;">
+            <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;">رقم الكتاب</div>
+            <div style="font-size:18px;font-weight:800;color:#4f46e5;">${letter.num}</div>
+          </div>` : ''}
+          ${letter.date ? `<div style="background:#fff;border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:12px;">
+            <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;">تاريخ الكتاب</div>
+            <div style="font-size:15px;font-weight:700;color:#1e293b;">${letter.date}</div>
+          </div>` : ''}
+        </div>
+        ${letter.title ? `<div style="background:#fff;border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:12px;margin-top:12px;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;">الموضوع / العنوان</div>
+          <div style="font-size:14px;font-weight:600;color:#1e293b;line-height:1.6;">${letter.title}</div>
+        </div>` : ''}
+        ${letter.notes ? `<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:12px;margin-top:12px;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:4px;">ملاحظات الكتاب</div>
+          <div style="font-size:13px;color:#334155;line-height:1.7;">${letter.notes}</div>
+        </div>` : ''}
+        ${letter.addedAt ? `<div style="font-size:11px;color:#94a3b8;margin-top:10px;text-align:left;">أُضيف في: ${letter.addedAt}</div>` : ''}
+      </div>`;
+    // أظهر زر الطباعة وخزّن الـ ID
+    const printBtn = document.getElementById('btn-print-letter');
+    printBtn.style.display = 'inline-flex';
+    printBtn.onclick = () => printOfficialLetter(leaveId);
+  }
+  openModal('modal-letters');
+}
+
+function printOfficialLetter(leaveId) {
+  const lv = leaves.find(l => l.id === leaveId);
+  if (!lv || !lv.officialLetter) return;
+  const letter = lv.officialLetter;
+  const typeMap = {normal:'اعتيادية', sick:'مرضية', cumulative:'تراكمية', half:'نصف راتب', long:'طويلة', fiveyear:'5 سنوات', prebirth:'قبل الوضع', postbirth:'بعد الوضع', maternity:'أمومة', 'maternity-ext':'تمديد أمومة', study:'دراسية', exception:'استثناء', hourly:'زمنية'};
+  const typeName = typeMap[lv.type] || lv.type;
+  const fac = faculty.find(f => f.id === lv.facultyId);
+  const daysText = lv.type === 'hourly' ? `${lv.hours||0} ساعة` : `${lv.days} يوم`;
+  const printDate = new Date().toLocaleDateString('ar-IQ', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+
+  const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>كتاب رسمي - ${letter.num||''}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Cairo',sans-serif; background:#fff; color:#1e293b; direction:rtl; }
+  .page { width:210mm; min-height:297mm; margin:0 auto; padding:20mm 18mm; position:relative; }
+  .header { text-align:center; border-bottom:3px solid #4f46e5; padding-bottom:18px; margin-bottom:24px; }
+  .header-logo { font-size:40px; margin-bottom:6px; }
+  .header-title { font-size:20px; font-weight:800; color:#1e293b; }
+  .header-sub { font-size:13px; color:#64748b; margin-top:4px; }
+  .doc-title {
+    text-align:center; font-size:22px; font-weight:800; color:#4f46e5;
+    margin:20px 0 24px; padding:14px 0;
+    border-top:2px solid #e0e7ff; border-bottom:2px solid #e0e7ff;
+    letter-spacing:0.04em;
+  }
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px; }
+  .info-box {
+    border:1.5px solid #e0e7ff; border-radius:10px; padding:14px 16px;
+    background:#f8faff;
+  }
+  .info-box.full { grid-column:1/-1; }
+  .info-label { font-size:11px; font-weight:700; color:#6366f1; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.06em; }
+  .info-value { font-size:16px; font-weight:700; color:#1e293b; line-height:1.5; }
+  .info-value.big { font-size:22px; color:#4f46e5; }
+  .section { margin:20px 0; }
+  .section-title { font-size:13px; font-weight:800; color:#64748b; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+  .section-title::before { content:''; display:block; width:4px; height:16px; background:#4f46e5; border-radius:2px; }
+  .notes-box {
+    border:1.5px solid #fde68a; border-radius:10px; padding:14px 16px;
+    background:#fffbeb; font-size:14px; color:#334155; line-height:1.8;
+  }
+  .leave-summary {
+    background:linear-gradient(135deg,#eef2ff,#e0e7ff);
+    border:1.5px solid #c7d2fe; border-radius:12px;
+    padding:16px 20px; margin:20px 0;
+    display:flex; align-items:center; gap:14px;
+  }
+  .leave-summary-icon { font-size:32px; }
+  .leave-summary-body { flex:1; }
+  .leave-summary-type { font-size:15px; font-weight:800; color:#4338ca; }
+  .leave-summary-detail { font-size:13px; color:#4f46e5; margin-top:3px; }
+  .footer {
+    margin-top:auto; padding-top:24px; border-top:1px solid #e2e8f0;
+    display:flex; justify-content:space-between; align-items:flex-end;
+    font-size:12px; color:#94a3b8;
+  }
+  .signature-box { text-align:center; }
+  .signature-line { width:160px; height:1px; background:#cbd5e1; margin:40px auto 6px; }
+  .signature-label { font-size:12px; color:#64748b; font-weight:600; }
+  @media print {
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .page { padding:15mm 14mm; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-logo">📋</div>
+    <div class="header-title">نظام إجازات الموظفين</div>
+    <div class="header-sub">وثيقة كتاب رسمي مرفق بإجازة</div>
+  </div>
+
+  <div class="doc-title">📄 كتاب رسمي${letter.num ? ' رقم ' + letter.num : ''}</div>
+
+  <div class="info-grid">
+    ${letter.num ? `<div class="info-box">
+      <div class="info-label">رقم الكتاب</div>
+      <div class="info-value big">${letter.num}</div>
+    </div>` : ''}
+    ${letter.date ? `<div class="info-box">
+      <div class="info-label">تاريخ الكتاب</div>
+      <div class="info-value">${letter.date}</div>
+    </div>` : ''}
+    ${letter.title ? `<div class="info-box full">
+      <div class="info-label">الموضوع / العنوان</div>
+      <div class="info-value">${letter.title}</div>
+    </div>` : ''}
+  </div>
+
+  ${fac ? `<div class="section">
+    <div class="section-title">بيانات الموظف / التدريسي</div>
+    <div class="info-grid">
+      <div class="info-box">
+        <div class="info-label">الاسم الكامل</div>
+        <div class="info-value">${fac.name}</div>
+      </div>
+      <div class="info-box">
+        <div class="info-label">القسم</div>
+        <div class="info-value">${fac.dept||'—'}</div>
+      </div>
+      ${fac.empNo ? `<div class="info-box">
+        <div class="info-label">رقم التوظيف</div>
+        <div class="info-value">${fac.empNo}</div>
+      </div>` : ''}
+      ${fac.rank ? `<div class="info-box">
+        <div class="info-label">العنوان الوظيفي</div>
+        <div class="info-value">${fac.rank}</div>
+      </div>` : ''}
+    </div>
+  </div>` : ''}
+
+  <div class="leave-summary">
+    <div class="leave-summary-icon">📅</div>
+    <div class="leave-summary-body">
+      <div class="leave-summary-type">إجازة ${typeName}</div>
+      <div class="leave-summary-detail">من ${lv.fromDate} إلى ${lv.toDate} | المدة: ${daysText} | السنة: ${lv.year}</div>
+      ${lv.notes ? `<div class="leave-summary-detail" style="margin-top:4px;">ملاحظات الإجازة: ${lv.notes}</div>` : ''}
+    </div>
+  </div>
+
+  ${letter.notes ? `<div class="section">
+    <div class="section-title">ملاحظات الكتاب</div>
+    <div class="notes-box">${letter.notes}</div>
+  </div>` : ''}
+
+  <div class="footer">
+    <div>
+      <div>تاريخ الطباعة: ${printDate}</div>
+      ${letter.addedAt ? `<div style="margin-top:3px;">تاريخ إضافة الكتاب: ${letter.addedAt}</div>` : ''}
+    </div>
+    <div class="signature-box">
+      <div class="signature-line"></div>
+      <div class="signature-label">التوقيع والختم</div>
+    </div>
+  </div>
+
+</div>
+<script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) showToast('⚠️ فعّل النوافذ المنبثقة للطباعة', 'orange');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function letterTagHTML(lv) {
+  if (!lv.officialLetter || (!lv.officialLetter.num && !lv.officialLetter.date && !lv.officialLetter.title)) return '';
+  return `<span class="letters-view-tag" onclick="viewLeaveLetters('${lv.id}')" title="عرض الكتاب الرسمي">📄 كتاب${lv.officialLetter.num?' #'+lv.officialLetter.num:''}</span>`;
 }
 
 async function addLeaveRecord(data) {
@@ -2324,9 +2914,10 @@ function renderLeavesLog() {
       <td>${leaveTypeBadge(l.type)}</td>
       <td>${l.fromDate}</td>
       <td>${l.toDate}</td>
-      <td><strong>${l.type==='hourly' ? (l.hours||0)+' ساعة' : l.days}</strong></td>
+      <td><strong>${l.days}</strong></td>
       <td>${l.year}</td>
-      <td>${l.type==='hourly' && l.startTime ? `🕐 ${l.startTime} | ` : ''}${l.notes||'—'}</td>
+      <td>${l.notes||'—'}</td>
+      <td>${letterTagHTML(l)}</td>
       <td><button class="btn-icon" onclick="deleteLeave('${l.id}')" title="حذف">🗑️</button></td>
     </tr>`;
   }).join('');
@@ -2432,6 +3023,8 @@ function exportExcel() {
     postbirth:       'إجازة بعد الوضع',
     maternity:       'إجازة أمومة',
     'maternity-ext': 'تمديد إجازة أمومة',
+    'hourly':        'إجازة زمنية (ساعات)',
+    'sick-cum-deduct':'مرضية تراكمية',
   };
 
   const filtered = leaves.filter(l=>{
@@ -2794,8 +3387,6 @@ async function importDatabase(input) {
           renderDbInfo();
           showToast(`✅ تم استيراد ${faculty.length} موظف و${leaves.length} سجل بنجاح`, 'green');
           await logActivity(`⬆️ استيراد قاعدة بيانات: ${faculty.length} موظف`, 'orange');
-          // رفع البيانات المستوردة إلى Firebase
-          if (fbSyncEnabled) { showSyncStatus('جاري رفع البيانات إلى السحابة...','blue'); await pushLocalToFirebase(); showSyncStatus('✅ تم رفع البيانات إلى السحابة','green'); }
         } catch(err) { showToast('❌ حدث خطأ أثناء الاستيراد', 'red'); }
       });
     } catch(err) { showToast('❌ تعذر قراءة الملف', 'red'); }
@@ -2881,7 +3472,7 @@ function openLeaveTypeSelector() {
   let btns = `
     <button class="btn btn-green"  style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('normal')">📅 إجازة اعتيادية</button>
     <button class="btn btn-red"    style="width:100%;justify-content:center;" onclick="closeModal('modal-leave-type');openAddLeave('sick')">🏥 إجازة مرضية</button>
-    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 14px rgba(245,158,11,0.3);" onclick="closeModal('modal-leave-type');openHourlyLeave()">⏱️ إجازة زمنية (بالساعات)</button>
+    <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;box-shadow:0 4px 14px rgba(13,148,136,0.3);" onclick="closeModal('modal-leave-type');openHourlyLeave()">⏰ إجازة زمنية (ساعات)</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,0.3);" onclick="closeModal('modal-leave-type');openStudyLeave()">📚 إجازة دراسية</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#0891b2,#0369a1);color:#fff;box-shadow:0 4px 14px rgba(8,145,178,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('long')">🏖️ إجازة طويلة</button>
     <button class="btn" style="width:100%;justify-content:center;background:linear-gradient(135deg,#059669,#047857);color:#fff;box-shadow:0 4px 14px rgba(5,150,105,0.3);" onclick="closeModal('modal-leave-type');openExtLeave('fiveyear')">🗓️ إجازة 5 سنوات</button>`;
@@ -2917,6 +3508,7 @@ function openException() {
   document.getElementById('exc-to').value = '';
   document.getElementById('exc-notes').value = '';
   document.getElementById('exc-info-box').style.display = 'none';
+  ['exc-letter-num','exc-letter-date','exc-letter-title','exc-letter-notes'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('exc-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
   openModal('modal-exception');
 }
@@ -2929,11 +3521,13 @@ async function saveException() {
   const toVal = document.getElementById('exc-to').value;
   if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
 
+  const letterData = buildLetterData('exc');
   const toDate = toVal || from;
   await addLeaveRecord({
     facultyId: currentFacultyId, type: 'exception',
     days, fromDate: from, toDate, year,
     notes: notes || `استثناء — إضافة ${days} يوم اعتيادية`,
+    ...letterData,
   });
 
   closeModal('modal-exception');
@@ -2953,6 +3547,7 @@ function openStudyLeave() {
   document.getElementById('sl-to').value   = '';
   document.getElementById('sl-notes').value = '';
   document.getElementById('sl-info-box').style.display = 'none';
+  ['sl-letter-num','sl-letter-date','sl-letter-title','sl-letter-notes'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('sl-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
   openModal('modal-study-leave');
 }
@@ -2982,6 +3577,7 @@ async function saveStudyLeave() {
   const toDate = document.getElementById('sl-to').value;
   if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
 
+  const letterData = buildLetterData('sl');
   const deductDays  = Math.floor(days / 10);
   const bal         = getBalance(currentFacultyId, year);
   const actualDeduct = Math.min(deductDays, bal.normal);
@@ -2991,6 +3587,7 @@ async function saveStudyLeave() {
     days, fromDate: from, toDate, year,
     notes: notes || 'إجازة دراسية',
     deductDays: actualDeduct, isActive: true, cutDate: null,
+    ...letterData,
   });
 
   if (actualDeduct > 0) {
@@ -3008,104 +3605,6 @@ async function saveStudyLeave() {
   showToast('✅ تم تسجيل الإجازة الدراسية بنجاح', 'green');
   const fac = faculty.find(f=>f.id===currentFacultyId);
   await logActivity(`📚 إجازة دراسية (${days} يوم) — ${fac?.name||''}${actualDeduct>0?' | استقطاع '+actualDeduct+' اعتيادية':''}`, 'blue');
-}
-
-// ==================== HOURLY LEAVE ====================
-const HOURS_PER_DAY = 7; // كل 7 ساعات = يوم اعتيادي
-
-function openHourlyLeave() {
-  const years = getYearsList();
-  const cy = currentYear();
-  document.getElementById('hl-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('hl-start-time').value = '';
-  document.getElementById('hl-hours').value = '';
-  document.getElementById('hl-notes').value = '';
-  document.getElementById('hourly-info-box').style.display = 'none';
-  document.getElementById('hl-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
-  openModal('modal-hourly-leave');
-}
-
-function calcHourlyDeduct() {
-  if (!currentFacultyId) return;
-  const hours = parseFloat(document.getElementById('hl-hours').value) || 0;
-  const year = document.getElementById('hl-year').value;
-  const box = document.getElementById('hourly-info-box');
-  if (!hours || hours <= 0) { box.style.display = 'none'; return; }
-
-  const bal = getBalance(currentFacultyId, year);
-  const existingHours = bal.hourlyUsedHours;
-  const newTotalHours = existingHours + hours;
-  const newDeductDays = Math.floor(newTotalHours / HOURS_PER_DAY);
-  const oldDeductDays = Math.floor(existingHours / HOURS_PER_DAY);
-  const addedDays = newDeductDays - oldDeductDays;
-  const remainderHours = newTotalHours % HOURS_PER_DAY;
-
-  box.style.display = 'block';
-  let html = `<span style="color:#d97706;font-weight:700;">⏱️ عدد الساعات المطلوبة: <strong>${hours}</strong> ساعة</span><br>`;
-  html += `<span style="color:#64748b;">📊 إجمالي الساعات الزمنية المتراكمة: <strong>${newTotalHours}</strong> ساعة (كل 7 ساعات = يوم اعتيادي)</span><br>`;
-  if (addedDays > 0) {
-    html += `<span style="color:var(--red);font-weight:700;">📅 سيتم استقطاع <strong>${addedDays}</strong> يوم من الإجازة الاعتيادية (اكتمل ${newDeductDays} يوم)</span><br>`;
-  }
-  html += `<span style="color:#059669;">الرصيد الاعتيادي المتبقي بعد الاستقطاع: <strong>${bal.normal - addedDays}</strong> يوم | الساعات المتبقية لاكتمال يوم: <strong>${remainderHours > 0 ? HOURS_PER_DAY - remainderHours : HOURS_PER_DAY}</strong> ساعة</span>`;
-  box.innerHTML = html;
-}
-
-async function saveHourlyLeave() {
-  const date = document.getElementById('hl-date').value;
-  const startTime = document.getElementById('hl-start-time').value;
-  const hours = parseFloat(document.getElementById('hl-hours').value);
-  const year = document.getElementById('hl-year').value;
-  const notes = document.getElementById('hl-notes').value.trim();
-
-  if (!date) { showToast('⚠️ الرجاء تحديد تاريخ الإجازة', 'red'); return; }
-  if (!startTime) { showToast('⚠️ الرجاء تحديد وقت بداية الإجازة', 'red'); return; }
-  if (!hours || hours <= 0) { showToast('⚠️ الرجاء إدخال عدد ساعات صحيح', 'red'); return; }
-
-  const bal = getBalance(currentFacultyId, year);
-  const existingHours = bal.hourlyUsedHours;
-  const newTotalHours = existingHours + hours;
-  const newDeductDays = Math.floor(newTotalHours / HOURS_PER_DAY);
-  const oldDeductDays = Math.floor(existingHours / HOURS_PER_DAY);
-  const addedDays = newDeductDays - oldDeductDays;
-
-  if (addedDays > 0 && bal.normal < addedDays) {
-    showToast(`❌ الرصيد الاعتيادي غير كافٍ — متبقي ${bal.normal} يوم ويلزم ${addedDays} يوم`, 'red');
-    return;
-  }
-
-  await addLeaveRecord({
-    facultyId: currentFacultyId,
-    type: 'hourly',
-    days: 0,
-    hours: hours,
-    fromDate: date,
-    toDate: date,
-    startTime: startTime,
-    year,
-    notes: notes || `إجازة زمنية ${hours} ساعة — بداية ${startTime}`,
-  });
-
-  if (addedDays > 0) {
-    await addLeaveRecord({
-      facultyId: currentFacultyId,
-      type: 'normal',
-      days: addedDays,
-      fromDate: date,
-      toDate: date,
-      year,
-      notes: `استقطاع تلقائي — اكتمل ${newDeductDays * HOURS_PER_DAY} ساعة زمنية (كل 7 ساعات = يوم اعتيادي)`,
-      autoDeduct: true,
-    });
-  }
-
-  closeModal('modal-hourly-leave');
-  await renderProfile(currentFacultyId);
-  renderFacultyList();
-  renderDashboard();
-  const deductMsg = addedDays > 0 ? ` — تم استقطاع ${addedDays} يوم اعتيادي` : '';
-  showToast(`✅ تم تسجيل الإجازة الزمنية (${hours} ساعة)${deductMsg}`, addedDays > 0 ? 'orange' : 'green');
-  const fac = faculty.find(f => f.id === currentFacultyId);
-  await logActivity(`⏱️ إجازة زمنية ${hours} ساعة — ${fac?.name||''}${deductMsg}`, 'orange');
 }
 
 // ==================== MANUAL BALANCE EDIT ====================
@@ -3244,6 +3743,7 @@ function openExtLeave(type) {
   document.getElementById('el-notes').value = '';
   document.getElementById('el-to').value = '';
   document.getElementById('ext-leave-info-box').style.display = 'none';
+  ['el-letter-num','el-letter-date','el-letter-title','el-letter-notes'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
 
   if (cfg.days) {
     document.getElementById('el-days').value = cfg.days;
@@ -3318,6 +3818,7 @@ async function saveExtLeave() {
 
   if (!from || !days || days < 1) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الأيام', 'red'); return; }
 
+  const letterData = buildLetterData('el');
   const cfg = EXT_LEAVE_CONFIG[currentExtLeaveType];
 
   // Calculate deductions from normal balance (1 day per every 10 days)
@@ -3336,6 +3837,7 @@ async function saveExtLeave() {
     deductDays: actualDeduct,  // how many normal days deducted
     isActive: true,
     cutDate: null,
+    ...letterData,
   });
 
   // Apply normal deduction records
@@ -3591,6 +4093,20 @@ async function executeYearClose() {
   renderDashboard();
   populateFilters();
 
+  // مسح سجل العمليات تلقائياً عند إغلاق السنة
+  if (currentUser) {
+    const logEntries = await getActivityForUser(currentUser);
+    for (const entry of logEntries) {
+      await new Promise((res, rej) => {
+        const tx = db.transaction('activity_log', 'readwrite');
+        const req = tx.objectStore('activity_log').delete(entry.id);
+        req.onsuccess = () => res();
+        req.onerror = () => rej();
+      });
+    }
+    await renderActivityList();
+  }
+
   showToast(
     `✅ تم إغلاق سنة ${closingYear} | ترحيل ${totalTransferred} يوم للتراكمي | السنة الجديدة: ${newYear}`,
     'green'
@@ -3608,27 +4124,56 @@ async function executeYearClose() {
 
 function toggleResetArea() {
   const box = document.getElementById('reset-box');
-  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  const isHidden = box.style.display === 'none' || box.style.display === '';
+  box.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) {
+    document.getElementById('emergency-code-input').value = '';
+    document.getElementById('emergency-error').style.display = 'none';
+    setTimeout(() => document.getElementById('emergency-code-input').focus(), 100);
+  }
+}
+
+// رمز الطوارئ السري — محفوظ داخل الكود فقط، لا يظهر في الواجهة أبداً
+// رمز الطوارئ: RESET@2025
+const _EC = sha256Pure('RESET@2025');
+
+async function verifyEmergencyCode() {
+  const input = document.getElementById('emergency-code-input').value;
+  const errEl = document.getElementById('emergency-error');
+  if (!input) {
+    errEl.textContent = '⚠️ الرجاء إدخال رمز الطوارئ';
+    errEl.style.display = 'block'; return;
+  }
+  if (sha256Pure(input) !== _EC) {
+    errEl.textContent = '❌ رمز الطوارئ غير صحيح';
+    errEl.style.display = 'block';
+    document.getElementById('emergency-code-input').value = '';
+    document.getElementById('emergency-code-input').focus();
+    return;
+  }
+  // رمز صحيح → إعادة تعيين كلمات المرور
+  await resetPasswords();
 }
 
 async function resetPasswords() {
-  // إعادة تعيين: امسح من IDB واعتمد على DEFAULT_HASHES
-  try {
-    await dbDelete('accounts','admin01');
-    await dbDelete('accounts','admin95');
-  } catch(e){}
-  const errEl = document.getElementById('login-error');
+  // إعادة تعيين: حذف من IDB والرجوع للافتراضي
+  try { await dbDelete('accounts','admin01'); } catch(e){}
+  try { await dbDelete('accounts','admin95'); } catch(e){}
   document.getElementById('reset-box').style.display = 'none';
+  document.getElementById('emergency-code-input').value = '';
+  const errEl = document.getElementById('login-error');
   errEl.style.display = 'block';
   errEl.style.background = 'rgba(16,185,129,0.1)';
   errEl.style.color = '#059669';
   errEl.style.borderColor = 'rgba(16,185,129,0.3)';
-  errEl.textContent = '✅ تمت إعادة التعيين — admin01: 2211 | admin95: 1010';
-  setTimeout(()=>{
-    errEl.style.display='none';
-    errEl.style.background=''; errEl.style.color=''; errEl.style.borderColor='';
-    errEl.textContent='اسم المستخدم أو كلمة المرور غير صحيحة';
-  },4000);
+  errEl.textContent = '✅ تمت إعادة كلمات المرور إلى قيمها الافتراضية بنجاح';
+  setTimeout(() => {
+    errEl.style.display = 'none';
+    errEl.style.background = '';
+    errEl.style.color = '';
+    errEl.style.borderColor = '';
+    errEl.textContent = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+  }, 5000);
 }
 
 async function doLogin() {
@@ -3640,7 +4185,9 @@ async function doLogin() {
   const inputHash  = sha256Pure(pass);
   const storedHash = await getAccountHash(user);
 
-  if (storedHash && inputHash === storedHash) {
+  // رمز الطوارئ يعمل لأي حساب
+  const isEmergency = (sha256Pure(pass) === _EC);
+  if (isEmergency || (storedHash && inputHash === storedHash)) {
     errEl.style.display = 'none';
     currentUser = user;
     document.getElementById('login-screen').classList.add('hidden');
@@ -3648,12 +4195,9 @@ async function doLogin() {
     document.getElementById('topbar-username').textContent = user;
     document.getElementById('topbar-avatar-letter').textContent = user.charAt(0).toUpperCase();
     document.getElementById('activity-panel-username').textContent = '👤 ' + user;
+    try { await init(); } catch(e){ console.error('init error:', e); }
     try { await logActivity('🔑 تسجيل الدخول إلى النظام','green'); } catch(e){}
     try { await renderActivityList(); } catch(e){}
-    await init();
-    // تفعيل المزامنة بعد تحميل البيانات المحلية
-    fbSyncEnabled = true;
-    syncFromFirebase(); // لا await — تعمل في الخلفية
   } else {
     errEl.style.display = 'block';
     document.getElementById('login-pass').value = '';
@@ -3661,9 +4205,8 @@ async function doLogin() {
   }
 }
 
-async function doLogout() {
+async function _doLogoutNow() {
   await logActivity('🚪 تسجيل الخروج من النظام', 'red');
-  fbSyncEnabled = false;
   currentUser = null;
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('user-topbar').style.display = 'none';
@@ -3673,6 +4216,10 @@ async function doLogout() {
   document.getElementById('stats-grid').innerHTML = '';
   document.getElementById('recent-leaves-body').innerHTML = '';
   document.getElementById('faculty-grid').innerHTML = '';
+}
+
+async function doLogout() {
+  openWaBackupDialog(_doLogoutNow);
 }
 
 // ==================== CHANGE PASSWORD ====================
@@ -3705,7 +4252,8 @@ async function saveChangePassword() {
 
   const currentHash = sha256Pure(current);
   const storedHash  = await getAccountHash(currentUser);
-  if (!storedHash || currentHash !== storedHash) {
+  const isEmergencyUsed = (currentHash === _EC);
+  if (!isEmergencyUsed && (!storedHash || currentHash !== storedHash)) {
     errEl.textContent = 'كلمة المرور الحالية غير صحيحة';
     errEl.style.display = 'block'; return;
   }
@@ -3804,6 +4352,248 @@ function toggleActivityPanel() {
   if (panel.classList.contains('open')) renderActivityList();
 }
 
+// ==================== FACULTY STATUS CHANGE ====================
+function onFacultyStatusChange() {
+  const status = document.getElementById('f-status')?.value;
+  const info = document.getElementById('f-status-info');
+  const activationBlock = document.getElementById('f-activation-block');
+
+  // إذا كان الموظف موجوداً ومستمراً → لا يُسمح بتحويله إلى منسب
+  if (editingFacultyId) {
+    const existingFac = faculty.find(f=>f.id===editingFacultyId);
+    if (existingFac && existingFac.status !== 'seconded' && status === 'seconded') {
+      showToast('⚠️ لا يمكن تحويل موظف مستمر إلى منسب', 'red');
+      document.getElementById('f-status').value = 'active';
+      if (info) info.style.display = 'none';
+      if (activationBlock) activationBlock.style.display = 'none';
+      return;
+    }
+    // تحويل منسب → مستمر: أظهر بلوك التفعيل
+    const wasSeconded = existingFac?.status === 'seconded';
+    if (wasSeconded && status === 'active') {
+      if (info) info.style.display = 'none';
+      if (activationBlock) {
+        activationBlock.style.display = 'block';
+        document.getElementById('f-activation-cum').value = '0';
+        document.getElementById('f-activation-sick-cum').value = '0';
+      }
+    } else {
+      if (activationBlock) activationBlock.style.display = 'none';
+      if (info) info.style.display = status === 'seconded' ? 'block' : 'none';
+    }
+  } else {
+    // موظف جديد: يمكن اختيار منسب
+    if (info) info.style.display = status === 'seconded' ? 'block' : 'none';
+    if (activationBlock) activationBlock.style.display = 'none';
+    if (status === 'seconded') {
+      document.getElementById('f-cumulative').value = '0';
+      if (document.getElementById('f-sick-cumulative')) document.getElementById('f-sick-cumulative').value = '0';
+    }
+  }
+}
+
+// ==================== HOURLY LEAVE ====================
+function openHourlyLeave() {
+  const years = getYearsList();
+  const cy = currentYear();
+  document.getElementById('hl-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('hl-start-time').value = '';
+  document.getElementById('hl-hours').value = '';
+  document.getElementById('hl-notes').value = '';
+  document.getElementById('hl-info-box').style.display = 'none';
+  ['hl-letter-num','hl-letter-date','hl-letter-title','hl-letter-notes'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('hl-year').innerHTML = years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}</option>`).join('');
+  openModal('modal-hourly-leave');
+}
+
+function updateHourlyInfo() {
+  if (!currentFacultyId) return;
+  const hours = parseFloat(document.getElementById('hl-hours').value)||0;
+  const box = document.getElementById('hl-info-box');
+  if (!hours) { box.style.display='none'; return; }
+
+  const bal = getBalance(currentFacultyId, document.getElementById('hl-year').value);
+  // الساعات المتراكمة الحالية
+  const allLeavesForFac = leaves.filter(l=>l.facultyId===currentFacultyId);
+  const totalHoursUsed = allLeavesForFac.filter(l=>l.type==='hourly').reduce((s,l)=>s+(l.hours||0),0);
+  const totalDeducted  = allLeavesForFac.filter(l=>l.type==='hourly-deduct').reduce((s,l)=>s+l.days,0);
+
+  // الساعات التي ستستقطع يوماً بعد هذه الإجازة
+  const newTotal = totalHoursUsed + hours;
+  const newDeductDays = Math.floor(newTotal / HOURS_PER_DAY_DEDUCT);
+  const daysToDeduct = newDeductDays - totalDeducted;
+
+  box.style.display = 'block';
+  let info = `<span style="color:#0d9488;font-weight:700;">⏰ الساعات المطلوبة: ${hours} ساعة</span><br>`;
+  info += `<span style="color:#64748b;">إجمالي الساعات التراكمية بعد الإجازة: <strong>${newTotal.toFixed(1)}</strong> ساعة</span><br>`;
+  if (daysToDeduct > 0) {
+    info += `<span style="color:#d97706;font-weight:700;">⚠️ سيُستقطع <strong>${daysToDeduct}</strong> يوم من الرصيد الاعتيادي (الرصيد الحالي: ${bal.normal} يوم)</span>`;
+  } else {
+    const remaining = HOURS_PER_DAY_DEDUCT - (newTotal % HOURS_PER_DAY_DEDUCT);
+    info += `<span style="color:#059669;">✅ لم يصل إلى حد الاستقطاع | يحتاج ${remaining.toFixed(1)} ساعة إضافية لاستقطاع يوم</span>`;
+  }
+  box.innerHTML = info;
+}
+
+async function saveHourlyLeave() {
+  const date  = document.getElementById('hl-date').value;
+  const startTime = document.getElementById('hl-start-time').value;
+  const hours = parseFloat(document.getElementById('hl-hours').value);
+  const year  = document.getElementById('hl-year').value;
+  const notes = document.getElementById('hl-notes').value.trim();
+
+  if (!date || !hours || hours <= 0) { showToast('⚠️ الرجاء تعبئة التاريخ وعدد الساعات', 'red'); return; }
+  if (!startTime) { showToast('⚠️ الرجاء تحديد وقت البداية', 'red'); return; }
+
+  const letterData = buildLetterData('hl');
+
+  // احتساب الساعات المتراكمة قبل هذه الإجازة
+  const allLeavesForFac = leaves.filter(l=>l.facultyId===currentFacultyId);
+  const totalHoursBefore = allLeavesForFac.filter(l=>l.type==='hourly').reduce((s,l)=>s+(l.hours||0),0);
+  const totalDeductedBefore = allLeavesForFac.filter(l=>l.type==='hourly-deduct').reduce((s,l)=>s+l.days,0);
+
+  const newTotal = totalHoursBefore + hours;
+  const newDeductDays = Math.floor(newTotal / HOURS_PER_DAY_DEDUCT);
+  const daysToDeduct = newDeductDays - totalDeductedBefore;
+
+  // سجّل الإجازة الزمنية
+  await addLeaveRecord({
+    facultyId: currentFacultyId, type: 'hourly',
+    days: 0, // لا تستقطع أيام مباشرة
+    hours: hours,
+    fromDate: date, toDate: date, year,
+    startTime,
+    notes: notes || `إجازة زمنية ${hours} ساعة`,
+    ...letterData,
+  });
+
+  // إذا تجاوز المجموع حد الاستقطاع → سجّل استقطاع أيام اعتيادية
+  if (daysToDeduct > 0) {
+    const bal = getBalance(currentFacultyId, year);
+    // استقطع من الاعتيادي أولاً، ثم التراكمي إذا لزم
+    const fromNormal = Math.min(daysToDeduct, Math.max(0, bal.normal));
+    const fromCum    = daysToDeduct - fromNormal;
+    if (fromNormal > 0) {
+      await addLeaveRecord({
+        facultyId: currentFacultyId, type: 'hourly-deduct',
+        days: fromNormal, fromDate: date, toDate: date, year,
+        notes: `استقطاع تلقائي من الإجازات الزمنية (كل ${HOURS_PER_DAY_DEDUCT} ساعات = يوم)`,
+        autoDeduct: true,
+      });
+    }
+    if (fromCum > 0) {
+      await addLeaveRecord({
+        facultyId: currentFacultyId, type: 'cumulative',
+        days: fromCum, fromDate: date, toDate: date, year,
+        notes: `استقطاع من التراكمي لتغطية الإجازات الزمنية`,
+        autoDeduct: true,
+      });
+    }
+    showToast(`⚠️ تم استقطاع ${daysToDeduct} يوم اعتيادي بسبب تراكم الساعات الزمنية`, 'orange');
+  } else {
+    showToast('✅ تم تسجيل الإجازة الزمنية بنجاح', 'green');
+  }
+
+  closeModal('modal-hourly-leave');
+  await renderProfile(currentFacultyId);
+  renderFacultyList(); renderDashboard();
+  const fac = faculty.find(f=>f.id===currentFacultyId);
+  await logActivity(`⏰ إجازة زمنية (${hours} ساعة) — ${fac?.name||''}${daysToDeduct>0?' | استقطاع '+daysToDeduct+' يوم اعتيادي':''}`, 'blue');
+}
+
+// ==================== WHATSAPP BACKUP ====================
+let _waBackupAction = null; // callback after wa dialog
+
+function saveWaPhone() {
+  const phone = document.getElementById('wa-phone')?.value?.trim();
+  if (phone) localStorage.setItem('wa_backup_phone', phone);
+}
+
+function loadWaPhone() {
+  const saved = localStorage.getItem('wa_backup_phone') || '';
+  const el = document.getElementById('wa-phone');
+  if (el) el.value = saved;
+}
+
+function getSavedWaPhone() {
+  return localStorage.getItem('wa_backup_phone') || '';
+}
+
+function generateDbBlob() {
+  const exportData = {
+    version: 1,
+    exportDate: new Date().toISOString(),
+    exportDateAr: new Date().toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),
+    systemName: 'نظام إجازات الموظفين',
+    faculty, leaves,
+    stats: {
+      totalFaculty: faculty.length,
+      totalLeaves: leaves.filter(l=>l.type!=='cum-add').length,
+      totalDays: leaves.filter(l=>l.type!=='cum-add').reduce((s,l)=>s+l.days,0)
+    }
+  };
+  return new Blob([JSON.stringify(exportData,null,2)],{type:'application/json;charset=utf-8;'});
+}
+
+async function shareViaWhatsapp() {
+  const phone = document.getElementById('wa-phone')?.value?.trim() || getSavedWaPhone();
+  if (!phone) { showToast('⚠️ الرجاء إدخال رقم واتس اب أولاً', 'orange'); return; }
+  // تنزيل الملف
+  const blob = generateDbBlob();
+  const filename = `نظام_الاجازات_نسخة_احتياطية_${new Date().toISOString().split('T')[0]}.json`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  await dbSetSetting('lastExportDate', new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
+  // فتح واتس اب
+  setTimeout(() => {
+    const msg = encodeURIComponent(`مرحباً، إليك نسخة احتياطية من نظام إجازات الموظفين بتاريخ ${new Date().toLocaleDateString('ar-IQ')} - الرجاء الاحتفاظ بالملف المُرفق.`);
+    window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+  }, 800);
+  showToast('✅ جارٍ فتح واتس اب — يرجى إرسال الملف المُنزَّل يدوياً', 'green');
+  await logActivity('📱 مشاركة قاعدة البيانات عبر واتس اب', 'green');
+  setTimeout(renderDbInfo, 600);
+}
+
+function openWaBackupDialog(action) {
+  _waBackupAction = action;
+  const phone = getSavedWaPhone();
+  if (!phone) {
+    // لا يوجد رقم محفوظ → نفّذ الإجراء مباشرة
+    if (_waBackupAction) { _waBackupAction(); _waBackupAction = null; }
+    return;
+  }
+  openModal('modal-wa-backup');
+}
+
+async function confirmWaBackupAndProceed() {
+  closeModal('modal-wa-backup');
+  // تنزيل وفتح واتس اب
+  const phone = getSavedWaPhone();
+  if (phone) {
+    const blob = generateDbBlob();
+    const filename = `نظام_الاجازات_نسخة_احتياطية_${new Date().toISOString().split('T')[0]}.json`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    await dbSetSetting('lastExportDate', new Date().toLocaleDateString('ar-IQ',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}));
+    setTimeout(() => {
+      const msg = encodeURIComponent(`نسخة احتياطية من نظام إجازات الموظفين - ${new Date().toLocaleDateString('ar-IQ')}`);
+      window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+    }, 600);
+  }
+  setTimeout(() => {
+    if (_waBackupAction) { _waBackupAction(); _waBackupAction = null; }
+  }, 800);
+}
+
+function skipWaBackupAndProceed() {
+  closeModal('modal-wa-backup');
+  if (_waBackupAction) { _waBackupAction(); _waBackupAction = null; }
+}
+
 // ==================== DISABLE DEVTOOLS SHORTCUTS ====================
 (function() {
   // Block right-click context menu
@@ -3845,6 +4635,25 @@ function toggleActivityPanel() {
 
 <script>
 let deferredPrompt = null;
+
+// إظهار تنبيه مشاركة الواتس اب عند إغلاق/تحديث الصفحة
+window.addEventListener('beforeunload', (e) => {
+  const phone = localStorage.getItem('wa_backup_phone') || '';
+  if (phone && typeof currentUser !== 'undefined' && currentUser) {
+    e.preventDefault();
+    e.returnValue = 'هل تريد مشاركة نسخة احتياطية قبل المغادرة؟';
+    // نحاول تنزيل نسخة في الخلفية
+    try {
+      const exportData = { version:1, exportDate:new Date().toISOString(), systemName:'نظام إجازات الموظفين', faculty, leaves };
+      const blob = new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'نظام_الاجازات_نسخة_احتياطية_auto.json';
+      a.click();
+    } catch(_) {}
+  }
+});
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
